@@ -233,8 +233,11 @@ export default function Dashboard() {
               <p className="text-gray-500 text-center py-8">Henüz teklif yok</p>
             ) : (
               quotes.slice(0, 5).map(quote => (
-                <div key={quote.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
+<div 
+  key={quote.id} 
+  onClick={() => router.push(`/quotes/${quote.id}`)}
+  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+>                  <div className="flex-1">
                     <p className="font-medium text-gray-900">{quote.quote_number}</p>
                     <p className="text-sm text-gray-600">{quote.customers?.name}</p>
                   </div>
