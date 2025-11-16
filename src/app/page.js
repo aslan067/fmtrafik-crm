@@ -421,7 +421,9 @@ export default function Dashboard() {
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map(item => (
-onClick={() => {
+<button
+  key={item.id}
+            onClick={() => {
   if (item.id === 'products') {
     router.push('/products')
   } else if (item.id === 'quotes') {
