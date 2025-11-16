@@ -36,10 +36,8 @@ export default function NewCustomerPage() {
     setError('')
 
     try {
-      // Kullanıcı bilgilerini al
       const user = await getCurrentUser()
       
-      // User profile'dan company_id al
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('company_id')
@@ -50,7 +48,6 @@ export default function NewCustomerPage() {
         throw new Error('Şirket bilgisi bulunamadı')
       }
 
-      // Müşteriyi kaydet
       const { data, error: insertError } = await supabase
         .from('customers')
         .insert([{
@@ -63,8 +60,8 @@ export default function NewCustomerPage() {
 
       if (insertError) throw insertError
 
-      // Başarılı, ana sayfaya dön
-      router.push('/?page=customers')
+      router.push('/')
+      router.refresh()
     } catch (err) {
       console.error('Error creating customer:', err)
       setError(err.message || 'Müşteri eklenirken bir hata oluştu')
@@ -76,32 +73,25 @@ export default function NewCustomerPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <button
-            onClick={() => router.push('/?page=customers')}
+            onClick={() => router.push('/')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
             Geri
           </button>
-          <button 
-  onClick={() => router.push('/customers/new')}
-  className="btn-primary flex items-center gap-2"
->
+          <h1 className="text-3xl font-bold text-gray-900">Yeni Müşteri Ekle</h1>
           <p className="text-gray-600 mt-2">Yeni müşteri bilgilerini girin</p>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-800">{error}</p>
           </div>
         )}
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="card space-y-6">
-          {/* Temel Bilgiler */}
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Temel Bilgiler</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -150,7 +140,6 @@ export default function NewCustomerPage() {
             </div>
           </div>
 
-          {/* İletişim Bilgileri */}
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">İletişim Bilgileri</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -225,7 +214,6 @@ export default function NewCustomerPage() {
             </div>
           </div>
 
-          {/* Ek Bilgiler */}
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Ek Bilgiler</h2>
             <div className="space-y-4">
@@ -260,11 +248,10 @@ export default function NewCustomerPage() {
             </div>
           </div>
 
-          {/* Buttons */}
           <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
             <button
               type="button"
-              onClick={() => router.push('/?page=customers')}
+              onClick={() => router.push('/')}
               className="btn-secondary flex items-center gap-2"
             >
               <X className="w-5 h-5" />
