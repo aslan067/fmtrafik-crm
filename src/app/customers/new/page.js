@@ -85,7 +85,10 @@ export default function NewCustomerPage() {
             <ArrowLeft className="w-5 h-5" />
             Geri
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">Yeni Müşteri Ekle</h1>
+          <button 
+  onClick={() => router.push('/customers/new')}
+  className="btn-primary flex items-center gap-2"
+>
           <p className="text-gray-600 mt-2">Yeni müşteri bilgilerini girin</p>
         </div>
 
