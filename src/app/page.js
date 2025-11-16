@@ -144,8 +144,11 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <button className="btn-primary flex items-center gap-2">
-          <Plus className="w-5 h-5" />
+        <button 
+  onClick={() => router.push('/quotes/new')}
+  className="btn-primary flex items-center gap-2"
+      >
+    <Plus className="w-5 h-5" />
           Yeni Teklif
         </button>
       </div>
