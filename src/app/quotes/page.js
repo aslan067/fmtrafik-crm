@@ -1,5 +1,5 @@
 'use client'
-
+import DashboardLayout from '@/components/DashboardLayout'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
@@ -98,8 +98,9 @@ export default function QuotesPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
+return (
+  <DashboardLayout>
+    <div className="p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -283,5 +284,8 @@ export default function QuotesPage() {
         )}
       </div>
     </div>
+      </div>
+    </div>
+  </DashboardLayout>
   )
 }
