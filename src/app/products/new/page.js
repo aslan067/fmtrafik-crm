@@ -1,5 +1,5 @@
 'use client'
-
+import DashboardLayout from '@/components/DashboardLayout'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
@@ -95,9 +95,8 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
+    <DashboardLayout>
+      <div className="p-6">
           <button
             onClick={() => router.push('/products')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
