@@ -1,5 +1,6 @@
 'use client'
 
+import DashboardLayout from '@/components/DashboardLayout'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
@@ -253,9 +254,9 @@ export default function NewQuotePage() {
 
   const totals = calculateTotals()
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
+return (
+  <DashboardLayout>
+    <div className="p-6">
         {/* Header */}
         <div className="mb-6">
           <button
@@ -577,5 +578,7 @@ export default function NewQuotePage() {
         </form>
       </div>
     </div>
+    </div>
+  </DashboardLayout>
   )
 }
