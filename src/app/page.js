@@ -358,10 +358,12 @@ export default function Dashboard() {
                     <td className="px-6 py-4">
                       {getStatusBadge(customer.status, 'customer')}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">
-                        Detay
-                      </button>
+<button 
+  onClick={() => router.push(`/customers/${customer.id}`)}
+  className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+>
+  Detay
+</button>
                     </td>
                   </tr>
                 ))}
