@@ -75,14 +75,22 @@ export default function ProductsPage() {
               <h1 className="text-3xl font-bold text-gray-900">Ürünler</h1>
               <p className="text-gray-600 mt-1">Ürün kataloğunu yönetin</p>
             </div>
-            <button 
-              onClick={() => router.push('/products/new')}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Yeni Ürün
-            </button>
-          </div>
+<div className="flex gap-3">
+  <button 
+    onClick={() => router.push('/products/import')}
+    className="btn-secondary flex items-center gap-2"
+  >
+    <Upload className="w-5 h-5" />
+    Toplu İçe Aktar
+  </button>
+  <button 
+    onClick={() => router.push('/products/new')}
+    className="btn-primary flex items-center gap-2"
+  >
+    <Plus className="w-5 h-5" />
+    Yeni Ürün
+  </button>
+</div>
 
           <div className="card mb-6">
             <div className="flex gap-3">
