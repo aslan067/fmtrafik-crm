@@ -91,7 +91,7 @@ export default function ProductsPage() {
     Yeni Ürün
   </button>
 </div>
-
+</div>
           <div className="card mb-6">
             <div className="flex gap-3">
               <div className="flex-1 relative">
