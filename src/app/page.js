@@ -1,5 +1,6 @@
 'use client'
 
+import DashboardLayout from '@/components/DashboardLayout'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
@@ -194,9 +195,9 @@ export default function Dashboard() {
       </div>
     )
   }
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
+return (
+  <DashboardLayout>
+    <div className="p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -517,5 +518,8 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+      </div>
+    </DashboardLayout>
+  )
   )
 }
