@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
-import { Search, Filter, Plus, Package, Edit, Trash2, ChevronDown } from 'lucide-react'
+import { Search, Filter, Plus, Package, Edit, Trash2, ChevronDown, Upload } from 'lucide-react'
 
 export default function ProductsPage() {
   const router = useRouter()
