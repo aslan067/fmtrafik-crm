@@ -157,47 +157,51 @@ export default function ProductDetailPage() {
             </div>
           )}
 
-          {/* Fiyatlar */}
-          {settings?.show_prices && (
-            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Fiyat Bilgileri</h2>
-              
-              <div className="space-y-3">
-                {/* Liste Fiyatı */}
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Liste Fiyatı:</span>
-                  <span className="text-lg text-gray-600 line-through">
-                    {currencySymbols[product.currency || 'TRY']}
-                    {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+{/* Fiyatlar */}
+{(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
+  <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 mb-6">
+    <h2 className="text-lg font-semibold text-gray-900 mb-4">Fiyat Bilgileri</h2>
+    
+    <div className="space-y-3">
+      {/* Liste Fiyatı */}
+      {settings?.show_list_price && (
+        <div className="flex items-center justify-between">
+          <span className="text-gray-700">Liste Fiyatı:</span>
+          <span className="text-lg text-gray-600 line-through">
+            {currencySymbols[product.currency || 'TRY']}
+            {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
 
-                {/* İskonto */}
-                {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700">Bayi İskontosu:</span>
-                    <span className="text-lg text-red-600 font-semibold">
-                      %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
-                    </span>
-                  </div>
-                )}
+      {/* İskonto */}
+      {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-gray-700">Bayi İskontosu:</span>
+          <span className="text-lg text-red-600 font-semibold">
+            %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+          </span>
+        </div>
+      )}
 
-                {/* Net Fiyat */}
-                <div className="flex items-center justify-between pt-3 border-t-2 border-white">
-                  <span className="text-xl font-semibold text-gray-900">Net Fiyatınız:</span>
-                  <span className="text-3xl font-bold text-green-600">
-                    {currencySymbols[product.currency || 'TRY']}
-                    {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+      {/* Net Fiyat */}
+      {settings?.show_net_price && (
+        <div className="flex items-center justify-between pt-3 border-t-2 border-white">
+          <span className="text-xl font-semibold text-gray-900">Net Fiyatınız:</span>
+          <span className="text-3xl font-bold text-green-600">
+            {currencySymbols[product.currency || 'TRY']}
+            {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
 
-                {/* Birim */}
-                <p className="text-sm text-gray-600 text-right">
-                  Birim: {product.unit}
-                </p>
-              </div>
-            </div>
-          )}
+      {/* Birim */}
+      <p className="text-sm text-gray-600 text-right">
+        Birim: {product.unit}
+      </p>
+    </div>
+  </div>
+)}
 
           {/* Teknik Özellikler */}
           {settings?.show_specifications && product.specifications && Object.keys(product.specifications).length > 0 && (
