@@ -344,72 +344,174 @@ return (
               </div>
             </div>
 
-            {/* Görünüm Ayarları */}
-            <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <Palette className="w-5 h-5 text-purple-600" />
-                <h2 className="text-lg font-semibold text-gray-900">Görünüm Ayarları</h2>
-              </div>
+{/* Gösterim Ayarları */}
+<div className="card">
+  <div className="flex items-center gap-2 mb-4">
+    <ToggleLeft className="w-5 h-5 text-green-600" />
+    <h2 className="text-lg font-semibold text-gray-900">Gösterim Ayarları</h2>
+  </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Header Rengi
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      name="header_color"
-                      value={formData.header_color}
-                      onChange={handleChange}
-                      className="h-10 w-20 rounded border border-gray-300 cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={formData.header_color}
-                      onChange={(e) => setFormData({ ...formData, header_color: e.target.value })}
-                      className="input-field w-32 font-mono text-sm"
-                    />
-                    <span className="text-sm text-gray-600">Katalog başlık çubuğu rengi</span>
-                  </div>
-                </div>
+  <div className="space-y-4">
+    {/* Fiyat Gösterimi Başlığı */}
+    <div className="pb-3 border-b border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">💰 Fiyat Gösterimi</h3>
+      <p className="text-xs text-gray-500">Bayilere hangi fiyat bilgilerinin gösterileceğini seçin</p>
+    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Logo URL
-                  </label>
-                  <input
-                    type="url"
-                    name="logo_url"
-                    value={formData.logo_url}
-                    onChange={handleChange}
-                    className="input-field"
-                    placeholder="https://example.com/logo.png"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Katalog başlığında gösterilecek logo
-                  </p>
-                </div>
+    {/* Liste Fiyatı */}
+    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="show_list_price"
+        checked={formData.show_list_price}
+        onChange={handleChange}
+        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium text-gray-900">Liste Fiyatını Göster</span>
+          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">İskontosuz</span>
+        </div>
+        <p className="text-xs text-gray-500">
+          Bayi liste fiyatını göster (üstü çizili olarak). 
+          <br />
+          <strong className="text-gray-700">Örnek:</strong> <span className="line-through">₺1.000,00</span>
+        </p>
+      </div>
+    </label>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Özel Mesaj
-                  </label>
-                  <textarea
-                    name="custom_message"
-                    value={formData.custom_message}
-                    onChange={handleChange}
-                    rows={3}
-                    className="input-field"
-                    placeholder="Bayilerimize özel mesaj..."
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Katalog üst kısmında gösterilecek mesaj
-                  </p>
-                </div>
-              </div>
+    {/* Net Fiyat */}
+    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="show_net_price"
+        checked={formData.show_net_price}
+        onChange={handleChange}
+        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium text-gray-900">Net Fiyatı Göster</span>
+          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">İskontolu</span>
+        </div>
+        <p className="text-xs text-gray-500">
+          İskonto uygulanmış net fiyatı göster (yeşil renkle vurgulu).
+          <br />
+          <strong className="text-gray-700">Örnek:</strong> <span className="text-green-600 font-semibold">₺550,00</span>
+        </p>
+      </div>
+    </label>
+
+    {/* İskonto Oranı */}
+    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="show_dealer_discount"
+        checked={formData.show_dealer_discount}
+        onChange={handleChange}
+        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium text-gray-900">İskonto Oranını Göster</span>
+          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">%</span>
+        </div>
+        <p className="text-xs text-gray-500">
+          Bayi iskonto yüzdesini göster.
+          <br />
+          <strong className="text-gray-700">Örnek:</strong> <span className="text-red-600">%45</span> İskonto
+        </p>
+      </div>
+    </label>
+
+    {/* Fiyat Önizleme */}
+    {(formData.show_list_price || formData.show_net_price || formData.show_dealer_discount) && (
+      <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
+        <p className="text-xs font-semibold text-gray-700 mb-3">👁️ Önizleme (bayilerin göreceği)</p>
+        <div className="bg-white p-3 rounded-lg space-y-2">
+          {formData.show_list_price && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Liste Fiyatı:</span>
+              <span className="text-gray-600 line-through">₺1.000,00</span>
             </div>
+          )}
+          {formData.show_dealer_discount && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">İskonto:</span>
+              <span className="text-red-600 font-semibold">%45</span>
+            </div>
+          )}
+          {formData.show_net_price && (
+            <div className="flex items-center justify-between text-sm pt-2 border-t">
+              <span className="font-semibold text-gray-700">Net Fiyat:</span>
+              <span className="text-lg font-bold text-green-600">₺550,00</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
 
+    {/* Uyarı */}
+    {!formData.show_list_price && !formData.show_net_price && (
+      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <p className="text-xs text-yellow-800">
+          ⚠️ <strong>Dikkat:</strong> En az bir fiyat türü seçmelisiniz (Liste veya Net)
+        </p>
+      </div>
+    )}
+
+    {/* Diğer Gösterim Ayarları Başlığı */}
+    <div className="pt-4 pb-3 border-t border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">📋 Diğer Bilgiler</h3>
+      <p className="text-xs text-gray-500">Ürün kartlarında gösterilecek ek bilgiler</p>
+    </div>
+
+    {/* Teknik Özellikler */}
+    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="show_specifications"
+        checked={formData.show_specifications}
+        onChange={handleChange}
+        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div>
+        <span className="text-sm font-medium text-gray-900">Teknik Özellikleri Göster</span>
+        <p className="text-xs text-gray-500">Ürün özelliklerini detay sayfasında göster</p>
+      </div>
+    </label>
+
+    {/* Ürün Kodları */}
+    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="show_product_codes"
+        checked={formData.show_product_codes}
+        onChange={handleChange}
+        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div>
+        <span className="text-sm font-medium text-gray-900">Ürün Kodlarını Göster</span>
+        <p className="text-xs text-gray-500">Ürün kodunu göster</p>
+      </div>
+    </label>
+
+    {/* Katalog Aktif */}
+    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+      <input
+        type="checkbox"
+        name="is_active"
+        checked={formData.is_active}
+        onChange={handleChange}
+        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <div>
+        <span className="text-sm font-medium text-gray-900">Katalog Aktif</span>
+        <p className="text-xs text-gray-500">Kataloğu yayında tut</p>
+      </div>
+    </label>
+  </div>
+</div>
             {/* Gösterim Ayarları */}
             <div className="card">
               <div className="flex items-center gap-2 mb-4">
