@@ -20,30 +20,55 @@ export default function CatalogSettingsPage() {
   const [companyId, setCompanyId] = useState(null)
   const [companyName, setCompanyName] = useState('')
   const [catalogUrl, setCatalogUrl] = useState('')
+  const [origin, setOrigin] = useState('')
 
+  // --- formData tek merkezi state (birleştirilmiş, detaylı)
+  const [formData, setFormData] = useState({
+    catalog_url_slug: '',
+    catalog_title: 'Ürün Kataloğu',
+    show_list_price: true,
+    show_net_price: true,
+    show_dealer_discount: true,
+    show_specifications: true,
+    show_product_codes: true,
+    items_per_page: 24,
+    logo_url: '',
+    header_color: '#2563eb',
+    custom_message: '',
+    is_active: true
+  })
 
+  // origin alınsın (SSR'de window yok)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setOrigin(window.location.origin || '')
+    }
+  }, [])
+
+  // katalog url'ini formData.slug'a bağlı olarak güncelle
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const slug = formData.catalog_url_slug || ''
+      setCatalogUrl(`${window.location.origin}/catalog/${slug}`)
+    } else {
+      setCatalogUrl(`/catalog/${formData.catalog_url_slug || ''}`)
+    }
+  }, [formData.catalog_url_slug])
 
   // -------------------------
   // Ayarları yükle
   // -------------------------
   useEffect(() => {
     loadSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Slug değişince otomatik URL üret
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setCatalogUrl(
-        `${window.location.origin}/catalog/${formData.catalog_url_slug || ''}`
-      )
-    }
-  }, [formData.catalog_url_slug])
 
   async function loadSettings() {
     try {
       const user = await getCurrentUser()
       if (!user) {
         setError('Kullanıcı bulunamadı')
+        setLoading(false)
         return
       }
 
@@ -69,10 +94,17 @@ export default function CatalogSettingsPage() {
       if (settingsError) throw settingsError
 
       if (settings) {
-        setFormData({
+        // settings'de farklı isimler varsa uyumlu hale getir
+        const merged = {
           catalog_url_slug: settings.catalog_url_slug || '',
           catalog_title: settings.catalog_title || 'Ürün Kataloğu',
-          show_prices: settings.show_prices !== false,
+          // destek için hem show_prices hem de ayrı alanları kontrol et
+          show_list_price: typeof settings.show_list_price !== 'undefined'
+            ? settings.show_list_price
+            : (typeof settings.show_prices !== 'undefined' ? settings.show_prices : true),
+          show_net_price: typeof settings.show_net_price !== 'undefined'
+            ? settings.show_net_price
+            : (typeof settings.show_prices !== 'undefined' ? settings.show_prices : true),
           show_dealer_discount: settings.show_dealer_discount !== false,
           show_specifications: settings.show_specifications !== false,
           show_product_codes: settings.show_product_codes !== false,
@@ -81,9 +113,11 @@ export default function CatalogSettingsPage() {
           header_color: settings.header_color || '#2563eb',
           custom_message: settings.custom_message || '',
           is_active: settings.is_active !== false
-        })
+        }
+
+        setFormData(prev => ({ ...prev, ...merged }))
       } else {
-        // Varsayılan slug oluştur
+        // Varsayılan slug oluştur (şirket adına göre)
         const defaultSlug = (profile.companies?.name || 'katalog')
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
@@ -94,7 +128,6 @@ export default function CatalogSettingsPage() {
           catalog_url_slug: defaultSlug
         }))
       }
-
     } catch (err) {
       console.error(err)
       setError('Ayarlar yüklenirken bir hata oluştu')
@@ -111,13 +144,13 @@ export default function CatalogSettingsPage() {
 
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : (type === 'number' ? Number(value) : value)
     }))
   }
 
   // Slug sanitize
   const handleSlugChange = (e) => {
-    const slug = e.target.value
+    const slug = (e.target.value || '')
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '')
       .replace(/--+/g, '-')
@@ -143,26 +176,41 @@ export default function CatalogSettingsPage() {
       }
 
       // Slug başka şirkette var mı?
-      const { data: existingSlugs } = await supabase
+      const { data: existingSlugs, error: slugErr } = await supabase
         .from('catalog_settings')
         .select('id, company_id')
         .eq('catalog_url_slug', formData.catalog_url_slug)
         .neq('company_id', companyId)
+
+      if (slugErr) throw slugErr
 
       if (existingSlugs?.length > 0) {
         throw new Error('Bu URL başka bir şirket tarafından kullanılıyor.')
       }
 
       // Mevcut kayıt var mı?
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from('catalog_settings')
         .select('id')
         .eq('company_id', companyId)
         .maybeSingle()
 
+      if (existingErr) throw existingErr
+
       const payload = {
         company_id: companyId,
-        ...formData,
+        catalog_url_slug: formData.catalog_url_slug,
+        catalog_title: formData.catalog_title,
+        show_list_price: formData.show_list_price,
+        show_net_price: formData.show_net_price,
+        show_dealer_discount: formData.show_dealer_discount,
+        show_specifications: formData.show_specifications,
+        show_product_codes: formData.show_product_codes,
+        items_per_page: formData.items_per_page,
+        logo_url: formData.logo_url,
+        header_color: formData.header_color,
+        custom_message: formData.custom_message,
+        is_active: formData.is_active,
         updated_at: new Date().toISOString()
       }
 
@@ -174,7 +222,6 @@ export default function CatalogSettingsPage() {
           .eq('company_id', companyId)
 
         if (updateErr) throw updateErr
-
       } else {
         // INSERT
         const { error: insertErr } = await supabase
@@ -186,19 +233,23 @@ export default function CatalogSettingsPage() {
 
       setSuccess('Katalog ayarları kaydedildi!')
       setTimeout(() => setSuccess(''), 3000)
-
     } catch (err) {
       console.error(err)
-      setError(err.message || 'Ayarlar kaydedilirken bir hata oluştu.')
+      setError(err?.message || 'Ayarlar kaydedilirken bir hata oluştu.')
     } finally {
       setSaving(false)
     }
   }
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(catalogUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      navigator.clipboard.writeText(catalogUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) {
+      console.error('Kopyalama hatası', e)
+      setError('Kopyalama başarısız oldu.')
+    }
   }
 
   // -------------------------
@@ -217,7 +268,7 @@ export default function CatalogSettingsPage() {
     )
   }
 
-return (
+  return (
     <DashboardLayout>
       <div className="p-6">
         <div className="max-w-4xl mx-auto">
@@ -260,7 +311,7 @@ return (
                   </label>
                   <div className="flex gap-2">
                     <span className="inline-flex items-center px-3 py-2 border border-r-0 border-gray-300 bg-gray-50 text-gray-500 rounded-l-lg text-sm">
-                      {window.location.origin}/catalog/
+                      {origin ? `${origin}/catalog/` : '/catalog/'}
                     </span>
                     <input
                       type="text"
@@ -303,7 +354,9 @@ return (
                       </button>
                       <button
                         type="button"
-                        onClick={() => window.open(catalogUrl, '_blank')}
+                        onClick={() => {
+                          if (typeof window !== 'undefined') window.open(catalogUrl, '_blank')
+                        }}
                         className="btn-secondary flex items-center gap-2 whitespace-nowrap"
                       >
                         <Eye className="w-4 h-4" />
@@ -329,174 +382,172 @@ return (
               </div>
             </div>
 
-{/* Gösterim Ayarları */}
-<div className="card">
-  <div className="flex items-center gap-2 mb-4">
-    <ToggleLeft className="w-5 h-5 text-green-600" />
-    <h2 className="text-lg font-semibold text-gray-900">Gösterim Ayarları</h2>
-  </div>
+            {/* Gösterim Ayarları (Birleşik - Detaylı) */}
+            <div className="card">
+              <div className="flex items-center gap-2 mb-4">
+                <ToggleLeft className="w-5 h-5 text-green-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Gösterim Ayarları</h2>
+              </div>
 
-  <div className="space-y-4">
-    {/* Fiyat Gösterimi Başlığı */}
-    <div className="pb-3 border-b border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">💰 Fiyat Gösterimi</h3>
-      <p className="text-xs text-gray-500">Bayilere hangi fiyat bilgilerinin gösterileceğini seçin</p>
-    </div>
+              <div className="space-y-4">
+                {/* Fiyat Gösterimi Başlığı */}
+                <div className="pb-3 border-b border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-1">💰 Fiyat Gösterimi</h3>
+                  <p className="text-xs text-gray-500">Bayilere hangi fiyat bilgilerinin gösterileceğini seçin</p>
+                </div>
 
-    {/* Liste Fiyatı */}
-    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="show_list_price"
-        checked={formData.show_list_price}
-        onChange={handleChange}
-        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900">Liste Fiyatını Göster</span>
-          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">İskontosuz</span>
-        </div>
-        <p className="text-xs text-gray-500">
-          Bayi liste fiyatını göster (üstü çizili olarak). 
-          <br />
-          <strong className="text-gray-700">Örnek:</strong> <span className="line-through">₺1.000,00</span>
-        </p>
-      </div>
-    </label>
+                {/* Liste Fiyatı */}
+                <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_list_price"
+                    checked={formData.show_list_price}
+                    onChange={handleChange}
+                    className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">Liste Fiyatını Göster</span>
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">İskontosuz</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Bayi liste fiyatını göster (üstü çizili olarak). 
+                      <br />
+                      <strong className="text-gray-700">Örnek:</strong> <span className="line-through">₺1.000,00</span>
+                    </p>
+                  </div>
+                </label>
 
-    {/* Net Fiyat */}
-    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="show_net_price"
-        checked={formData.show_net_price}
-        onChange={handleChange}
-        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900">Net Fiyatı Göster</span>
-          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">İskontolu</span>
-        </div>
-        <p className="text-xs text-gray-500">
-          İskonto uygulanmış net fiyatı göster (yeşil renkle vurgulu).
-          <br />
-          <strong className="text-gray-700">Örnek:</strong> <span className="text-green-600 font-semibold">₺550,00</span>
-        </p>
-      </div>
-    </label>
+                {/* Net Fiyat */}
+                <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_net_price"
+                    checked={formData.show_net_price}
+                    onChange={handleChange}
+                    className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">Net Fiyatı Göster</span>
+                      <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">İskontolu</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      İskonto uygulanmış net fiyatı göster (yeşil renkle vurgulu).
+                      <br />
+                      <strong className="text-gray-700">Örnek:</strong> <span className="text-green-600 font-semibold">₺550,00</span>
+                    </p>
+                  </div>
+                </label>
 
-    {/* İskonto Oranı */}
-    <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="show_dealer_discount"
-        checked={formData.show_dealer_discount}
-        onChange={handleChange}
-        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900">İskonto Oranını Göster</span>
-          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">%</span>
-        </div>
-        <p className="text-xs text-gray-500">
-          Bayi iskonto yüzdesini göster.
-          <br />
-          <strong className="text-gray-700">Örnek:</strong> <span className="text-red-600">%45</span> İskonto
-        </p>
-      </div>
-    </label>
+                {/* İskonto Oranı */}
+                <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_dealer_discount"
+                    checked={formData.show_dealer_discount}
+                    onChange={handleChange}
+                    className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">İskonto Oranını Göster</span>
+                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">%</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Bayi iskonto yüzdesini göster.
+                      <br />
+                      <strong className="text-gray-700">Örnek:</strong> <span className="text-red-600">%45</span> İskonto
+                    </p>
+                  </div>
+                </label>
 
-    {/* Fiyat Önizleme */}
-    {(formData.show_list_price || formData.show_net_price || formData.show_dealer_discount) && (
-      <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
-        <p className="text-xs font-semibold text-gray-700 mb-3">👁️ Önizleme (bayilerin göreceği)</p>
-        <div className="bg-white p-3 rounded-lg space-y-2">
-          {formData.show_list_price && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Liste Fiyatı:</span>
-              <span className="text-gray-600 line-through">₺1.000,00</span>
+                {/* Fiyat Önizleme */}
+                {(formData.show_list_price || formData.show_net_price || formData.show_dealer_discount) && (
+                  <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
+                    <p className="text-xs font-semibold text-gray-700 mb-3">👁️ Önizleme (bayilerin göreceği)</p>
+                    <div className="bg-white p-3 rounded-lg space-y-2">
+                      {formData.show_list_price && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Liste Fiyatı:</span>
+                          <span className="text-gray-600 line-through">₺1.000,00</span>
+                        </div>
+                      )}
+                      {formData.show_dealer_discount && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">İskonto:</span>
+                          <span className="text-red-600 font-semibold">%45</span>
+                        </div>
+                      )}
+                      {formData.show_net_price && (
+                        <div className="flex items-center justify-between text-sm pt-2 border-t">
+                          <span className="font-semibold text-gray-700">Net Fiyat:</span>
+                          <span className="text-lg font-bold text-green-600">₺550,00</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Uyarı */}
+                {!formData.show_list_price && !formData.show_net_price && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-xs text-yellow-800">
+                      ⚠️ <strong>Dikkat:</strong> En az bir fiyat türü seçmelisiniz (Liste veya Net)
+                    </p>
+                  </div>
+                )}
+
+                {/* Diğer Bilgiler */}
+                <div className="pt-4 pb-3 border-t border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-1">📋 Diğer Bilgiler</h3>
+                  <p className="text-xs text-gray-500">Ürün kartlarında gösterilecek ek bilgiler</p>
+                </div>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_specifications"
+                    checked={formData.show_specifications}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Teknik Özellikleri Göster</span>
+                    <p className="text-xs text-gray-500">Ürün özelliklerini detay sayfasında göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_product_codes"
+                    checked={formData.show_product_codes}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Ürün Kodlarını Göster</span>
+                    <p className="text-xs text-gray-500">Ürün kodunu göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    checked={formData.is_active}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Katalog Aktif</span>
+                    <p className="text-xs text-gray-500">Kataloğu yayında tut</p>
+                  </div>
+                </label>
+              </div>
             </div>
-          )}
-          {formData.show_dealer_discount && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">İskonto:</span>
-              <span className="text-red-600 font-semibold">%45</span>
-            </div>
-          )}
-          {formData.show_net_price && (
-            <div className="flex items-center justify-between text-sm pt-2 border-t">
-              <span className="font-semibold text-gray-700">Net Fiyat:</span>
-              <span className="text-lg font-bold text-green-600">₺550,00</span>
-            </div>
-          )}
-        </div>
-      </div>
-    )}
 
-    {/* Uyarı */}
-    {!formData.show_list_price && !formData.show_net_price && (
-      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p className="text-xs text-yellow-800">
-          ⚠️ <strong>Dikkat:</strong> En az bir fiyat türü seçmelisiniz (Liste veya Net)
-        </p>
-      </div>
-    )}
-
-    {/* Diğer Gösterim Ayarları Başlığı */}
-    <div className="pt-4 pb-3 border-t border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">📋 Diğer Bilgiler</h3>
-      <p className="text-xs text-gray-500">Ürün kartlarında gösterilecek ek bilgiler</p>
-    </div>
-
-    {/* Teknik Özellikler */}
-    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="show_specifications"
-        checked={formData.show_specifications}
-        onChange={handleChange}
-        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div>
-        <span className="text-sm font-medium text-gray-900">Teknik Özellikleri Göster</span>
-        <p className="text-xs text-gray-500">Ürün özelliklerini detay sayfasında göster</p>
-      </div>
-    </label>
-
-    {/* Ürün Kodları */}
-    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="show_product_codes"
-        checked={formData.show_product_codes}
-        onChange={handleChange}
-        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div>
-        <span className="text-sm font-medium text-gray-900">Ürün Kodlarını Göster</span>
-        <p className="text-xs text-gray-500">Ürün kodunu göster</p>
-      </div>
-    </label>
-
-    {/* Katalog Aktif */}
-    <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-      <input
-        type="checkbox"
-        name="is_active"
-        checked={formData.is_active}
-        onChange={handleChange}
-        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <div>
-        <span className="text-sm font-medium text-gray-900">Katalog Aktif</span>
-        <p className="text-xs text-gray-500">Kataloğu yayında tut</p>
-      </div>
-    </label>
-  </div>
-</div>
             {/* Sayfalama */}
             <div className="card">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Sayfalama</h2>
@@ -510,10 +561,10 @@ return (
                   onChange={handleChange}
                   className="input-field w-32"
                 >
-                  <option value="12">12</option>
-                  <option value="24">24</option>
-                  <option value="48">48</option>
-                  <option value="96">96</option>
+                  <option value={12}>12</option>
+                  <option value={24}>24</option>
+                  <option value={48}>48</option>
+                  <option value={96}>96</option>
                 </select>
               </div>
             </div>
