@@ -21,19 +21,22 @@ export default function CatalogSettingsPage() {
   const [companyName, setCompanyName] = useState('')
   const [catalogUrl, setCatalogUrl] = useState('')
 
-  const [formData, setFormData] = useState({
-    catalog_url_slug: '',
-    catalog_title: 'Ürün Kataloğu',
-    show_prices: true,
-    show_dealer_discount: true,
-    show_specifications: true,
-    show_product_codes: true,
-    items_per_page: 24,
-    logo_url: '',
-    header_color: '#2563eb',
-    custom_message: '',
-    is_active: true
+if (settings) {
+  setFormData({
+    catalog_url_slug: settings.catalog_url_slug || '',
+    catalog_title: settings.catalog_title || 'Ürün Kataloğu',
+    show_list_price: settings.show_list_price !== false,      // ✅ Yeni
+    show_net_price: settings.show_net_price !== false,        // ✅ Yeni
+    show_dealer_discount: settings.show_dealer_discount !== false,
+    show_specifications: settings.show_specifications !== false,
+    show_product_codes: settings.show_product_codes !== false,
+    items_per_page: settings.items_per_page || 24,
+    logo_url: settings.logo_url || '',
+    header_color: settings.header_color || '#2563eb',
+    custom_message: settings.custom_message || '',
+    is_active: settings.is_active !== false
   })
+}
 
   // -------------------------
   // Ayarları yükle
