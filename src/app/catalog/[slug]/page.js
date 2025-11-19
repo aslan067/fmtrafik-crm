@@ -246,36 +246,29 @@ export default function CatalogPage() {
         </span>
       </div>
     )}
-                    {/* Liste Fiyatı */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500">Liste Fiyatı:</span>
-                      <span className="text-sm text-gray-600 line-through">
-                        {currencySymbols[product.currency || 'TRY']}
-                        {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
 
-                    {/* İskonto */}
-                    {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">İskonto:</span>
-                        <span className="text-sm text-red-600 font-medium">
-                          %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
-                        </span>
-                      </div>
-                    )}
+    {/* İskonto */}
+    {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-500">İskonto:</span>
+        <span className="text-sm text-red-600 font-medium">
+          %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+        </span>
+      </div>
+    )}
 
-                    {/* Net Fiyat */}
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-sm font-medium text-gray-700">Net Fiyat:</span>
-                      <span className="text-lg font-bold text-green-600">
-                        {currencySymbols[product.currency || 'TRY']}
-                        {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
+    {/* Net Fiyat */}
+    {settings?.show_net_price && (
+      <div className="flex items-center justify-between pt-2 border-t">
+        <span className="text-sm font-medium text-gray-700">Net Fiyat:</span>
+        <span className="text-lg font-bold text-green-600">
+          {currencySymbols[product.currency || 'TRY']}
+          {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+        </span>
+      </div>
+    )}
+  </div>
+)}
                 {/* Birim */}
                 <p className="text-xs text-gray-500 mb-3">Birim: {product.unit}</p>
 
