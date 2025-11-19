@@ -229,14 +229,315 @@ export default function CatalogSettingsPage() {
     )
   }
 
-  return (
+return (
     <DashboardLayout>
+      <div className="p-6">
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900">Bayi Kataloğu Ayarları</h1>
+            <p className="text-gray-600 mt-2">
+              Bayilerinizin erişeceği ürün kataloğunu yapılandırın
+            </p>
+          </div>
 
-      {/* --- BURADAN İTİBAREN UI DEĞİŞMEDİ, SENİN ORİJİNAL TASARIMIN KORUNDU --- */}
+          {/* Success Message */}
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
+              <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-green-800">{success}</p>
+            </div>
+          )}
 
-      {/* Tüm UI Burada */}
-      {/* İstersen geri kalan UI’yı da düzenleyebilirim */}
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
 
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Katalog URL */}
+            <div className="card">
+              <div className="flex items-center gap-2 mb-4">
+                <Globe className="w-5 h-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Katalog URL</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    URL Slug <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <span className="inline-flex items-center px-3 py-2 border border-r-0 border-gray-300 bg-gray-50 text-gray-500 rounded-l-lg text-sm">
+                      {window.location.origin}/catalog/
+                    </span>
+                    <input
+                      type="text"
+                      name="catalog_url_slug"
+                      value={formData.catalog_url_slug}
+                      onChange={handleSlugChange}
+                      required
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      placeholder="fmtrafik"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Sadece küçük harf, rakam ve tire (-) kullanılabilir
+                  </p>
+                </div>
+
+                {formData.catalog_url_slug && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-700 mb-2">📍 Katalog Adresi:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded text-sm text-blue-600 font-mono">
+                        {catalogUrl}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={copyToClipboard}
+                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            Kopyalandı
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Kopyala
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.open(catalogUrl, '_blank')}
+                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Önizle
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Katalog Başlığı
+                  </label>
+                  <input
+                    type="text"
+                    name="catalog_title"
+                    value={formData.catalog_title}
+                    onChange={handleChange}
+                    className="input-field"
+                    placeholder="Ürün Kataloğu"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Görünüm Ayarları */}
+            <div className="card">
+              <div className="flex items-center gap-2 mb-4">
+                <Palette className="w-5 h-5 text-purple-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Görünüm Ayarları</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Header Rengi
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      name="header_color"
+                      value={formData.header_color}
+                      onChange={handleChange}
+                      className="h-10 w-20 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={formData.header_color}
+                      onChange={(e) => setFormData({ ...formData, header_color: e.target.value })}
+                      className="input-field w-32 font-mono text-sm"
+                    />
+                    <span className="text-sm text-gray-600">Katalog başlık çubuğu rengi</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Logo URL
+                  </label>
+                  <input
+                    type="url"
+                    name="logo_url"
+                    value={formData.logo_url}
+                    onChange={handleChange}
+                    className="input-field"
+                    placeholder="https://example.com/logo.png"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Katalog başlığında gösterilecek logo
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Özel Mesaj
+                  </label>
+                  <textarea
+                    name="custom_message"
+                    value={formData.custom_message}
+                    onChange={handleChange}
+                    rows={3}
+                    className="input-field"
+                    placeholder="Bayilerimize özel mesaj..."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Katalog üst kısmında gösterilecek mesaj
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Gösterim Ayarları */}
+            <div className="card">
+              <div className="flex items-center gap-2 mb-4">
+                <ToggleLeft className="w-5 h-5 text-green-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Gösterim Ayarları</h2>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_prices"
+                    checked={formData.show_prices}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Fiyatları Göster</span>
+                    <p className="text-xs text-gray-500">Liste fiyatı ve net fiyatı göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_dealer_discount"
+                    checked={formData.show_dealer_discount}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">İskonto Oranını Göster</span>
+                    <p className="text-xs text-gray-500">Bayi iskonto yüzdesini göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_specifications"
+                    checked={formData.show_specifications}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Teknik Özellikleri Göster</span>
+                    <p className="text-xs text-gray-500">Ürün özelliklerini göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="show_product_codes"
+                    checked={formData.show_product_codes}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Ürün Kodlarını Göster</span>
+                    <p className="text-xs text-gray-500">Ürün kodunu göster</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    checked={formData.is_active}
+                    onChange={handleChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Katalog Aktif</span>
+                    <p className="text-xs text-gray-500">Kataloğu yayında tut</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Sayfalama */}
+            <div className="card">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Sayfalama</h2>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sayfa Başına Ürün Sayısı
+                </label>
+                <select
+                  name="items_per_page"
+                  value={formData.items_per_page}
+                  onChange={handleChange}
+                  className="input-field w-32"
+                >
+                  <option value="12">12</option>
+                  <option value="24">24</option>
+                  <option value="48">48</option>
+                  <option value="96">96</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => router.push('/settings')}
+                className="btn-secondary"
+              >
+                İptal
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>Kaydediliyor...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-5 h-5" />
+                    <span>Ayarları Kaydet</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </DashboardLayout>
   )
 }
