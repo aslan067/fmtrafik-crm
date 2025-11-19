@@ -233,9 +233,19 @@ export default function CatalogPage() {
                   <p className="text-xs text-gray-500 mb-3">{product.category}</p>
                 )}
 
-                {/* Fiyatlar */}
-                {settings?.show_prices && (
-                  <div className="space-y-1 mb-3">
+{/* Fiyatlar */}
+{(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
+  <div className="space-y-1 mb-3">
+    {/* Liste Fiyatı */}
+    {settings?.show_list_price && (
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-500">Liste Fiyatı:</span>
+        <span className="text-sm text-gray-600 line-through">
+          {currencySymbols[product.currency || 'TRY']}
+          {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+        </span>
+      </div>
+    )}
                     {/* Liste Fiyatı */}
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Liste Fiyatı:</span>
