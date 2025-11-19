@@ -21,22 +21,7 @@ export default function CatalogSettingsPage() {
   const [companyName, setCompanyName] = useState('')
   const [catalogUrl, setCatalogUrl] = useState('')
 
-if (settings) {
-  setFormData({
-    catalog_url_slug: settings.catalog_url_slug || '',
-    catalog_title: settings.catalog_title || 'Ürün Kataloğu',
-    show_list_price: settings.show_list_price !== false,      // ✅ Yeni
-    show_net_price: settings.show_net_price !== false,        // ✅ Yeni
-    show_dealer_discount: settings.show_dealer_discount !== false,
-    show_specifications: settings.show_specifications !== false,
-    show_product_codes: settings.show_product_codes !== false,
-    items_per_page: settings.items_per_page || 24,
-    logo_url: settings.logo_url || '',
-    header_color: settings.header_color || '#2563eb',
-    custom_message: settings.custom_message || '',
-    is_active: settings.is_active !== false
-  })
-}
+
 
   // -------------------------
   // Ayarları yükle
@@ -512,86 +497,6 @@ return (
     </label>
   </div>
 </div>
-            {/* Gösterim Ayarları */}
-            <div className="card">
-              <div className="flex items-center gap-2 mb-4">
-                <ToggleLeft className="w-5 h-5 text-green-600" />
-                <h2 className="text-lg font-semibold text-gray-900">Gösterim Ayarları</h2>
-              </div>
-
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    name="show_prices"
-                    checked={formData.show_prices}
-                    onChange={handleChange}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">Fiyatları Göster</span>
-                    <p className="text-xs text-gray-500">Liste fiyatı ve net fiyatı göster</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    name="show_dealer_discount"
-                    checked={formData.show_dealer_discount}
-                    onChange={handleChange}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">İskonto Oranını Göster</span>
-                    <p className="text-xs text-gray-500">Bayi iskonto yüzdesini göster</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    name="show_specifications"
-                    checked={formData.show_specifications}
-                    onChange={handleChange}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">Teknik Özellikleri Göster</span>
-                    <p className="text-xs text-gray-500">Ürün özelliklerini göster</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    name="show_product_codes"
-                    checked={formData.show_product_codes}
-                    onChange={handleChange}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">Ürün Kodlarını Göster</span>
-                    <p className="text-xs text-gray-500">Ürün kodunu göster</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleChange}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">Katalog Aktif</span>
-                    <p className="text-xs text-gray-500">Kataloğu yayında tut</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-
             {/* Sayfalama */}
             <div className="card">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Sayfalama</h2>
