@@ -166,8 +166,8 @@ export default function ProductDetailPage() {
       {/* Liste Fiyatı */}
       {settings?.show_list_price && (
         <div className="flex items-center justify-between">
-          <span className="text-gray-700">Liste Fiyatı:</span>
-          <span className="text-lg text-gray-600 line-through">
+          <span className="text-xl font-semibold text-gray-900">Liste Fiyatı:</span>
+          <span className="text-3xl font-bold text-red-600">
             {currencySymbols[product.currency || 'TRY']}
             {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
           </span>
