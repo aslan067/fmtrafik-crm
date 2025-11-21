@@ -19,6 +19,8 @@ export default function CompanySettingsPage() {
     phone: '',
     website: '',
     address: '',
+    tax_office: '', // Yeni
+    tax_number: '', // Yeni
     logo_url: ''
   })
 
@@ -45,6 +47,8 @@ export default function CompanySettingsPage() {
         phone: company.phone || '',
         website: company.website || '',
         address: company.address || '',
+        tax_office: company.tax_office || '', // Yeni
+        tax_number: company.tax_number || '', // Yeni
         logo_url: company.logo_url || ''
       })
     } catch (err) {
@@ -64,8 +68,6 @@ export default function CompanySettingsPage() {
       const fileExt = file.name.split('.').pop()
       const fileName = `company-logo-${Date.now()}.${fileExt}`
       
-      // Public 'products' bucket'ını kullanabiliriz veya yeni 'company' bucket'ı açabiliriz. 
-      // Şimdilik 'products' bucketına atalım, public olduğu için.
       const { error: uploadError } = await supabase.storage
         .from('products') 
         .upload(fileName, file)
@@ -160,6 +162,18 @@ export default function CompanySettingsPage() {
               <div>
                 <label className="block text-sm font-medium mb-1">Şirket Ünvanı</label>
                 <input value={formData.name} onChange={e=>setFormData({...formData, name:e.target.value})} className="input-field" required />
+              </div>
+
+              {/* YENİ EKLENEN: Vergi Bilgileri */}
+              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">Vergi Dairesi</label>
+                  <input value={formData.tax_office} onChange={e=>setFormData({...formData, tax_office:e.target.value})} className="input-field" placeholder="Örn: Kadıköy" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">Vergi Numarası</label>
+                  <input value={formData.tax_number} onChange={e=>setFormData({...formData, tax_number:e.target.value})} className="input-field" placeholder="1234567890" />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
