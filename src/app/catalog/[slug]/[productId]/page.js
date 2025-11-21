@@ -18,25 +18,38 @@ export default function ProductDetailPage() {
 
   async function loadProductDetail() {
     try {
-      const { data: catalogSettings } = await supabase
+      // 1. Katalog ayarlarını yükle
+      const { data: catalogSettings, error: settingsError } = await supabase
         .from('catalog_settings')
         .select('*, companies(id, name)')
         .eq('catalog_url_slug', params.slug)
         .eq('is_active', true)
         .single()
 
+      if (settingsError) throw settingsError
       setSettings(catalogSettings)
 
-      const { data: productData } = await supabase
+      // 2. Ürün detayını yükle
+      const { data: productData, error: productError } = await supabase
         .from('products')
-        .select(`*, product_groups (code, name, color_code, dealer_discount_percentage)`)
+        .select(`
+          *,
+          product_groups (
+            code, 
+            name, 
+            color_code, 
+            dealer_discount_percentage
+          )
+        `)
         .eq('id', params.productId)
         .eq('company_id', catalogSettings.company_id)
         .single()
 
+      if (productError) throw productError
       setProduct(productData)
+
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error loading product:', error)
     } finally {
       setLoading(false)
     }
@@ -45,15 +58,42 @@ export default function ProductDetailPage() {
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
   const getCurrencySymbol = (c) => currencySymbols[c || 'TRY'] || '₺'
 
-  if (loading) return <div className="h-screen flex items-center justify-center">Yükleniyor...</div>
-  if (!product) return <div className="text-center py-20">Ürün bulunamadı</div>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Yükleniyor...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!product) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
+        <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Ürün Bulunamadı</h1>
+        <p className="text-gray-600 mb-6">Bu ürün mevcut değil veya yayından kaldırılmış olabilir.</p>
+        <button
+          onClick={() => router.push(`/catalog/${params.slug}`)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Kataloğa Dön
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Breadcrumb / Nav */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <button onClick={() => router.push(`/catalog/${params.slug}`)} className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-2">
+          <button 
+            onClick={() => router.push(`/catalog/${params.slug}`)} 
+            className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-2"
+          >
             <ArrowLeft className="w-4 h-4" /> Kataloğa Dön
           </button>
         </div>
@@ -67,7 +107,11 @@ export default function ProductDetailPage() {
             {/* Görsel Kartı */}
             <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 flex items-center justify-center min-h-[400px]">
               {product.image_url ? (
-                <img src={product.image_url} alt={product.name} className="max-h-[500px] w-auto object-contain" />
+                <img 
+                  src={product.image_url} 
+                  alt={product.name} 
+                  className="max-h-[500px] w-auto object-contain" 
+                />
               ) : (
                 <div className="text-gray-300 flex flex-col items-center">
                   <Package className="w-24 h-24 mb-4" />
@@ -112,9 +156,17 @@ export default function ProductDetailPage() {
                 
                 {/* Ürün Başlık */}
                 <div className="mb-4">
-                  <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">{product.product_code}</span>
+                  {product.product_code && (
+                    <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      {product.product_code}
+                    </span>
+                  )}
                   <h1 className="text-2xl font-bold text-gray-900 mt-2 leading-tight">{product.name}</h1>
-                  <p className="text-sm text-gray-500 mt-1">{product.category}</p>
+                  {product.category && (
+                    <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                      <Tag className="w-3 h-3" /> {product.category}
+                    </p>
+                  )}
                 </div>
 
                 {/* Fiyat Alanı */}
@@ -124,7 +176,7 @@ export default function ProductDetailPage() {
                       <span className="text-sm text-gray-500">Liste Fiyatı</span>
                       <span className="text-sm text-gray-400 line-through decoration-red-400">
                          {getCurrencySymbol(product.currency)}
-                         {parseFloat(product.dealer_list_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                         {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
                   )}
@@ -141,7 +193,7 @@ export default function ProductDetailPage() {
                       <span className="block text-xs text-gray-500 mb-1">Net Birim Fiyat</span>
                       <span className="text-4xl font-bold text-blue-600 tracking-tight">
                         {getCurrencySymbol(product.currency)}
-                        {parseFloat(product.dealer_net_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-xs text-gray-400 ml-1">+ KDV</span>
                     </div>
