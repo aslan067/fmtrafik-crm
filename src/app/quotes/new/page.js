@@ -21,6 +21,7 @@ export default function NewQuotePage() {
   const [customers, setCustomers] = useState([])
   const [products, setProducts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
+  const [companyTerms, setCompanyTerms] = useState({ tr: '', en: '' }) // Şartlar için state
   
   // Form State
   const [formData, setFormData] = useState({
@@ -28,12 +29,12 @@ export default function NewQuotePage() {
     title: '',
     valid_until: '',
     currency: 'TRY',
-    exchange_rate: 1.00, // Varsayılan kur
+    exchange_rate: 1.00,
     template_code: 'standard_tr',
     bank_account_id: '',
     show_product_images: true,
     notes: '',
-    terms: '',
+    terms: '', // Otomatik dolacak
     tax_rate: 20,
     discount_percentage: 0
   })
@@ -42,7 +43,6 @@ export default function NewQuotePage() {
     { id: Date.now(), product_id: '', description: '', quantity: 1, list_price: 0, discount_percentage: 0, unit_price: 0, total_price: 0, cost_price: 0, original_currency: 'TRY' }
   ])
 
-  // Şablon Seçenekleri
   const templates = [
     { id: 'standard_tr', name: 'Standart Türkçe', lang: 'TR', icon: FileText },
     { id: 'standard_en', name: 'Standart İngilizce', lang: 'EN', icon: Globe },
@@ -58,90 +58,85 @@ export default function NewQuotePage() {
     setFormData(prev => ({ ...prev, valid_until: date.toISOString().split('T')[0] }))
   }, [])
 
-  // Kur veya Para Birimi değişirse tüm kalemleri yeniden hesapla
+  // Şablon değiştiğinde şartları otomatik güncelle
+  useEffect(() => {
+    if (formData.template_code === 'standard_tr') {
+      setFormData(prev => ({ ...prev, terms: companyTerms.tr }))
+    } else {
+      setFormData(prev => ({ ...prev, terms: companyTerms.en }))
+    }
+  }, [formData.template_code, companyTerms])
+
+  // Kur veya Para Birimi değişirse fiyatları yeniden hesapla
   useEffect(() => {
     if (items.length > 0 && items[0].product_id) {
       recalculateAllItems()
     }
   }, [formData.currency, formData.exchange_rate])
 
-  // Varsayılan şartları getir (Şablon değişince)
-  useEffect(() => {
-    loadDefaultTerms()
-  }, [formData.template_code])
-
   async function loadInitialData() {
     try {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      const [custRes, prodRes, bankRes] = await Promise.all([
+      // Tüm gerekli verileri paralel çek
+      const [custRes, prodRes, bankRes, compRes] = await Promise.all([
         supabase.from('customers').select('*').eq('company_id', profile.company_id).eq('status', 'active').order('name'),
         supabase.from('products').select('*, product_groups(dealer_discount_percentage)').eq('company_id', profile.company_id).eq('is_active', true).order('name'),
-        supabase.from('company_bank_accounts').select('*').eq('company_id', profile.company_id).eq('is_active', true)
+        supabase.from('company_bank_accounts').select('*').eq('company_id', profile.company_id).eq('is_active', true),
+        supabase.from('companies').select('default_terms_tr, default_terms_en, default_quote_terms').eq('id', profile.company_id).single()
       ])
 
       setCustomers(custRes.data || [])
       setProducts(prodRes.data || [])
       setBankAccounts(bankRes.data || [])
 
+      // Şirket şartlarını kaydet
+      const trTerms = compRes.data?.default_terms_tr || compRes.data?.default_quote_terms || ''
+      const enTerms = compRes.data?.default_terms_en || ''
+      setCompanyTerms({ tr: trTerms, en: enTerms })
+      
+      // İlk açılışta Türkçe şartları form'a ata
+      setFormData(prev => ({ ...prev, terms: trTerms }))
+
+      // Varsayılan banka seçimi
       const defaultBank = bankRes.data?.find(b => b.currency === 'TRY') || bankRes.data?.[0]
       if (defaultBank) setFormData(prev => ({ ...prev, bank_account_id: defaultBank.id }))
 
     } catch (err) {
+      console.error('Veri yükleme hatası:', err)
       setError('Veriler yüklenirken hata oluştu')
     }
   }
 
-  async function loadDefaultTerms() {
-    // Şimdilik statik, istenirse DB'den çekilebilir (önceki adımda yaptığımız gibi)
-    // Burada context'i basitleştirmek için placeholder kullanıyorum
-    // Gerçek senaryoda companies tablosundaki default_terms_tr/en alanlarını kullanırız
-  }
-
-  // --- FİYAT ÇEVİRİ MANTIĞI (CORE LOGIC) ---
-  
+  // --- Fiyat Dönüştürme Mantığı ---
   const convertPrice = (price, fromCurrency, toCurrency, rate) => {
     if (!price) return 0
     if (fromCurrency === toCurrency) return price
-    
     const exchangeRate = parseFloat(rate) || 1
     
-    // 1. Senaryo: Ürün USD, Teklif TRY (Çarp)
-    if (fromCurrency !== 'TRY' && toCurrency === 'TRY') {
-      return price * exchangeRate
-    }
+    if (fromCurrency !== 'TRY' && toCurrency === 'TRY') return price * exchangeRate
+    if (fromCurrency === 'TRY' && toCurrency !== 'TRY') return price / exchangeRate
     
-    // 2. Senaryo: Ürün TRY, Teklif USD (Böl)
-    if (fromCurrency === 'TRY' && toCurrency !== 'TRY') {
-      return price / exchangeRate
-    }
-
-    // 3. Senaryo: USD -> EUR (Çapraz Kur - Basitlik için TRY üzerinden veya direkt oran kabul edilebilir)
-    // Şimdilik sadece TRY paritesine göre işlem yapıyoruz.
-    // Eğer USD -> EUR ise ve rate parite ise (ör: 1.1):
-    // Bu MVP'de karmaşıklığı önlemek için ana kural: RATE her zaman "Yabancı Para / TRY" değeridir.
-    // Yani Kur = 32.50 ise, bu 1 USD = 32.50 TL demektir.
-    
-    return price // Desteklenmeyen çapraz kur için olduğu gibi bırak
+    // Çapraz kur (USD -> EUR vb.) için şimdilik birebir bırakıyoruz veya manuel kur girilmeli
+    return price 
   }
 
   const recalculateAllItems = () => {
     const newItems = items.map(item => {
-      // Orijinal fiyatı koruyarak yeniden çevir
-      if (!item.original_list_price) return item // Eğer ürün seçilmemişse atla
+      if (!item.product_id) return item
 
+      // Orijinal (DB'deki) fiyatı baz alarak çevir
       const convertedListPrice = convertPrice(
-        item.original_list_price, 
-        item.original_currency, 
+        item.original_list_price || 0, 
+        item.original_currency || 'TRY', 
         formData.currency, 
         formData.exchange_rate
       )
 
-      // Maliyeti de çevir (Kar analizi için)
       const convertedCostPrice = convertPrice(
-        item.original_cost_price,
-        item.original_currency,
+        item.original_cost_price || 0,
+        item.original_currency || 'TRY',
         formData.currency,
         formData.exchange_rate
       )
@@ -150,10 +145,10 @@ export default function NewQuotePage() {
       
       return {
         ...item,
-        list_price: convertedListPrice, // Ekranda görünen çevrilmiş fiyat
+        list_price: convertedListPrice,
+        cost_price: convertedCostPrice,
         unit_price: unitPrice,
-        total_price: unitPrice * (item.quantity || 1),
-        cost_price: convertedCostPrice
+        total_price: unitPrice * (item.quantity || 1)
       }
     })
     setItems(newItems)
@@ -164,35 +159,22 @@ export default function NewQuotePage() {
     const item = newItems[index]
     item[field] = value
 
-    // Ürün Seçimi
     if (field === 'product_id') {
       const product = products.find(p => p.id === value)
       if (product) {
         item.description = product.name
-        item.original_currency = product.currency || 'TRY' // Ürünün orijinal para birimini sakla
-        item.original_list_price = parseFloat(product.dealer_list_price) // Orijinal liste fiyatını sakla
-        item.original_cost_price = parseFloat(product.our_cost_price) // Orijinal maliyeti sakla
+        // Orijinal verileri sakla (Kur değişince buradan hesaplayacağız)
+        item.original_currency = product.currency || 'TRY'
+        item.original_list_price = parseFloat(product.dealer_list_price)
+        item.original_cost_price = parseFloat(product.our_cost_price)
         
-        // Anlık çeviri yap
-        item.list_price = convertPrice(
-          item.original_list_price, 
-          product.currency, 
-          formData.currency, 
-          formData.exchange_rate
-        )
-        item.cost_price = convertPrice(
-          item.original_cost_price,
-          product.currency,
-          formData.currency,
-          formData.exchange_rate
-        )
-        
-        // Varsayılan iskonto
-        // item.discount_percentage = product.product_groups?.dealer_discount_percentage || 0
+        // Mevcut kura göre hesapla
+        item.list_price = convertPrice(item.original_list_price, item.original_currency, formData.currency, formData.exchange_rate)
+        item.cost_price = convertPrice(item.original_cost_price, item.original_currency, formData.currency, formData.exchange_rate)
       }
     }
 
-    // Satır Hesaplamaları
+    // Satır Toplamları
     const listPrice = parseFloat(item.list_price) || 0
     const quantity = parseFloat(item.quantity) || 0
     const discount = parseFloat(item.discount_percentage) || 0
@@ -209,14 +191,13 @@ export default function NewQuotePage() {
     
     const generalDiscountAmount = subtotal * (parseFloat(formData.discount_percentage) || 0) / 100
     const subtotalAfterDiscount = subtotal - generalDiscountAmount
-    
     const taxAmount = subtotalAfterDiscount * (parseFloat(formData.tax_rate) || 0) / 100
     const total = subtotalAfterDiscount + taxAmount
 
-    const estimatedProfit = subtotalAfterDiscount - totalCost
-    const profitMargin = subtotalAfterDiscount > 0 ? (estimatedProfit / subtotalAfterDiscount) * 100 : 0
+    const profit = subtotalAfterDiscount - totalCost
+    const margin = subtotalAfterDiscount > 0 ? (profit / subtotalAfterDiscount) * 100 : 0
 
-    return { subtotal, generalDiscountAmount, subtotalAfterDiscount, taxAmount, total, totalCost, estimatedProfit, profitMargin }
+    return { subtotal, generalDiscountAmount, subtotalAfterDiscount, taxAmount, total, profit, margin }
   }
 
   const totals = calculateTotals()
@@ -233,20 +214,29 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
+      // --- NUMARA ÜRETME (DÜZELTİLMİŞ) ---
       const year = new Date().getFullYear()
-      const { data: lastQuote } = await supabase
+      
+      // .single() yerine .limit(1) kullanıyoruz, böylece kayıt yoksa hata vermez, boş dizi döner
+      const { data: lastQuotes, error: lastQuoteError } = await supabase
         .from('quotes')
         .select('quote_number')
         .eq('company_id', profile.company_id)
         .like('quote_number', `${year}-%`)
         .order('quote_number', { ascending: false })
         .limit(1)
-        .single()
+
+      if (lastQuoteError) throw lastQuoteError
 
       let nextNum = 1
-      if (lastQuote) nextNum = parseInt(lastQuote.quote_number.split('-')[1]) + 1
+      if (lastQuotes && lastQuotes.length > 0) {
+        // En son numarayı bul ve artır
+        const lastNumStr = lastQuotes[0].quote_number.split('-')[1]
+        nextNum = parseInt(lastNumStr) + 1
+      }
       const quoteNumber = `${year}-${String(nextNum).padStart(4, '0')}`
 
+      // Kayıt
       const { data: quote, error: quoteError } = await supabase
         .from('quotes')
         .insert([{
@@ -259,7 +249,7 @@ export default function NewQuotePage() {
           bank_account_id: formData.bank_account_id || null,
           show_product_images: formData.show_product_images,
           currency: formData.currency,
-          exchange_rate: parseFloat(formData.exchange_rate), // Kuru kaydet
+          exchange_rate: parseFloat(formData.exchange_rate),
           subtotal: totals.subtotal,
           discount_percentage: formData.discount_percentage,
           discount_amount: totals.generalDiscountAmount,
@@ -281,7 +271,7 @@ export default function NewQuotePage() {
         product_id: item.product_id,
         description: item.description,
         quantity: item.quantity,
-        list_price: item.list_price, // Çevrilmiş fiyatı kaydet
+        list_price: item.list_price,
         discount_percentage: item.discount_percentage,
         unit_price: item.unit_price,
         total_price: item.total_price,
@@ -312,19 +302,18 @@ export default function NewQuotePage() {
               <p className="text-gray-600">Müşterinize özel, profesyonel bir teklif hazırlayın.</p>
             </div>
             
-            {/* KAR ANALİZİ (Sadece size özel) */}
             <div className="hidden md:flex items-center gap-4 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
               <div className="text-right">
                 <p className="text-xs text-gray-500">Tahmini Kâr</p>
-                <p className={`font-bold ${totals.profitMargin < 15 ? 'text-red-600' : 'text-green-600'}`}>
-                  {currencySymbols[formData.currency]}{totals.estimatedProfit.toLocaleString('tr-TR', {minimumFractionDigits:2})}
+                <p className={`font-bold ${totals.margin < 15 ? 'text-red-600' : 'text-green-600'}`}>
+                  {currencySymbols[formData.currency]}{totals.profit.toLocaleString('tr-TR', {minimumFractionDigits:2})}
                 </p>
               </div>
               <div className={`h-8 w-px bg-gray-200`}></div>
               <div className="text-right">
                 <p className="text-xs text-gray-500">Marj</p>
-                <p className={`font-bold ${totals.profitMargin < 15 ? 'text-red-600' : 'text-green-600'}`}>
-                  %{totals.profitMargin.toFixed(1)}
+                <p className={`font-bold ${totals.margin < 15 ? 'text-red-600' : 'text-green-600'}`}>
+                  %{totals.margin.toFixed(1)}
                 </p>
               </div>
             </div>
@@ -334,9 +323,8 @@ export default function NewQuotePage() {
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             
-            {/* SOL KOLON - 3/12 */}
+            {/* SOL KOLON */}
             <div className="xl:col-span-3 space-y-6">
-              
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
@@ -358,7 +346,6 @@ export default function NewQuotePage() {
 
               <div className="card space-y-4 bg-blue-50/50 border-blue-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Para Birimi & Kur</h3>
-                
                 <div>
                   <label className="label-text">Teklif Para Birimi</label>
                   <select value={formData.currency} onChange={(e)=>setFormData({...formData, currency:e.target.value})} className="input-field">
@@ -367,39 +354,22 @@ export default function NewQuotePage() {
                     <option value="EUR">Euro (EUR)</option>
                   </select>
                 </div>
-
-                {/* KUR ALANI - Sadece TRY değilse veya manuel girmek isterse */}
                 <div>
                   <label className="label-text flex justify-between">
                     <span>Kur (Exchange Rate)</span>
                     <span className="text-blue-600 cursor-pointer" onClick={()=>setFormData({...formData, exchange_rate: 1})}>Sıfırla</span>
                   </label>
                   <div className="relative">
-                    <input 
-                      type="number" 
-                      value={formData.exchange_rate} 
-                      onChange={(e)=>setFormData({...formData, exchange_rate: e.target.value})} 
-                      className="input-field pr-10 font-bold" 
-                      step="0.0001"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <RefreshCw className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <input type="number" value={formData.exchange_rate} onChange={(e)=>setFormData({...formData, exchange_rate: e.target.value})} className="input-field pr-10 font-bold" step="0.0001" />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2"><RefreshCw className="w-4 h-4 text-gray-400" /></div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {formData.currency === 'TRY' 
-                      ? '1 USD/EUR = X TRY (Ürün çevirisi için)' 
-                      : `1 ${formData.currency} = X TRY`}
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">{formData.currency === 'TRY' ? '1 USD/EUR = X TRY' : `1 ${formData.currency} = X TRY`}</p>
                 </div>
-
                 <div>
                   <label className="label-text">Banka Hesabı</label>
                   <select value={formData.bank_account_id} onChange={(e)=>setFormData({...formData, bank_account_id:e.target.value})} className="input-field">
                     <option value="">Banka Seçin</option>
-                    {bankAccounts.map(b => (
-                      <option key={b.id} value={b.id}>{b.bank_name} - {b.currency}</option>
-                    ))}
+                    {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.bank_name} - {b.currency}</option>)}
                   </select>
                 </div>
               </div>
@@ -422,12 +392,10 @@ export default function NewQuotePage() {
                   </label>
                 </div>
               </div>
-
             </div>
 
-            {/* SAĞ KOLON (LİSTE VE TOPLAMLAR) - 9/12 */}
+            {/* SAĞ KOLON */}
             <div className="xl:col-span-9 space-y-6">
-              
               <div className="card min-h-[400px]">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-semibold text-lg">Teklif Kalemleri</h3>
@@ -475,7 +443,7 @@ export default function NewQuotePage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="card space-y-4">
                   <h3 className="font-semibold text-gray-900">Şartlar ve Notlar</h3>
-                  <div><label className="label-text">Teklif Şartları</label><textarea value={formData.terms} onChange={(e)=>setFormData({...formData, terms:e.target.value})} rows={4} className="input-field text-sm" /></div>
+                  <div><label className="label-text">Teklif Şartları</label><textarea value={formData.terms} onChange={(e)=>setFormData({...formData, terms:e.target.value})} rows={6} className="input-field text-sm" /></div>
                   <div><label className="label-text">Özel Notlar</label><textarea value={formData.notes} onChange={(e)=>setFormData({...formData, notes:e.target.value})} rows={2} className="input-field text-sm" placeholder="Müşteriye not..." /></div>
                 </div>
 
@@ -491,7 +459,6 @@ export default function NewQuotePage() {
                   </div>
                 </div>
               </div>
-
             </div>
           </form>
         </div>
