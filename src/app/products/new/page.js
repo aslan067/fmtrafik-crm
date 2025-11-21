@@ -9,6 +9,7 @@ import { Save, X, Calculator, TrendingUp, AlertCircle, Upload, ImagePlus } from 
 export default function NewProductPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false) // Görsel yükleme durumu
   const [error, setError] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
   const [suppliers, setSuppliers] = useState([])
@@ -92,7 +93,6 @@ export default function NewProductPage() {
 
   function calculatePrices() {
     const supplier = suppliers.find(s => s.id === formData.supplier_id)
-    const group = productGroups.find(g => g.id === formData.product_group_id)
     
     if (!supplier || !formData.supplier_list_price) return
 
@@ -100,13 +100,13 @@ export default function NewProductPage() {
     let dealerList = 0
 
     if (supplier.discount_type === 'percentage' && formData.supplier_discount_percentage) {
-      ourCost = parseFloat(formData.supplier_list_price) * 
-                (1 - parseFloat(formData.supplier_discount_percentage) / 100)
+      ourCost = parseFloat(formData.supplier_list_price) * (1 - parseFloat(formData.supplier_discount_percentage) / 100)
     } else if (supplier.discount_type === 'net_price') {
       ourCost = parseFloat(formData.supplier_list_price)
       dealerList = ourCost * parseFloat(formData.price_multiplier)
     }
 
+    // Basit bir mantık: Eğer net fiyat değilse %25 kar ile liste fiyatı belirle
     if (supplier.discount_type === 'percentage') {
       dealerList = ourCost * 1.25
     }
@@ -137,9 +137,12 @@ export default function NewProductPage() {
     })
   }
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0]
-    if (file) {
+  // YENİ GÖRSEL YÜKLEME FONKSİYONU
+  const handleImageUpload = async (e) => {
+    try {
+      const file = e.target.files[0]
+      if (!file) return
+
       // Dosya boyutu kontrolü (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setError('Görsel boyutu 5MB\'dan küçük olmalıdır')
@@ -152,16 +155,39 @@ export default function NewProductPage() {
         return
       }
 
-      // Preview oluştur
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result)
-        setFormData(prev => ({
-          ...prev,
-          image_url: reader.result
-        }))
+      setUploading(true)
+      setError('')
+
+      // Benzersiz dosya adı oluştur
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `${fileName}`
+
+      // Supabase Storage'a yükle
+      const { error: uploadError } = await supabase.storage
+        .from('products') // Bucket adı 'products' olmalı
+        .upload(filePath, file)
+
+      if (uploadError) {
+        throw uploadError
       }
-      reader.readAsDataURL(file)
+
+      // Public URL al
+      const { data: { publicUrl } } = supabase.storage
+        .from('products')
+        .getPublicUrl(filePath)
+
+      setImagePreview(publicUrl)
+      setFormData(prev => ({
+        ...prev,
+        image_url: publicUrl
+      }))
+
+    } catch (err) {
+      console.error('Upload error:', err)
+      setError('Görsel yüklenirken hata oluştu: ' + err.message)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -194,8 +220,7 @@ export default function NewProductPage() {
       let profitMargin = 0
 
       if (supplier?.discount_type === 'percentage') {
-        ourCost = parseFloat(formData.supplier_list_price) * 
-                  (1 - parseFloat(formData.supplier_discount_percentage || 0) / 100)
+        ourCost = parseFloat(formData.supplier_list_price) * (1 - parseFloat(formData.supplier_discount_percentage || 0) / 100)
       } else if (supplier?.discount_type === 'net_price') {
         ourCost = parseFloat(formData.supplier_list_price)
       }
@@ -256,7 +281,7 @@ export default function NewProductPage() {
     }
   }
 
-  // Hesaplama özeti
+  // Hesaplama özeti değişkenleri
   const supplier = suppliers.find(s => s.id === formData.supplier_id)
   const group = productGroups.find(g => g.id === formData.product_group_id)
   
@@ -267,8 +292,7 @@ export default function NewProductPage() {
   let profitMargin = 0
 
   if (supplier?.discount_type === 'percentage' && formData.supplier_discount_percentage) {
-    ourCost = parseFloat(formData.supplier_list_price || 0) * 
-              (1 - parseFloat(formData.supplier_discount_percentage) / 100)
+    ourCost = parseFloat(formData.supplier_list_price || 0) * (1 - parseFloat(formData.supplier_discount_percentage) / 100)
   } else if (supplier?.discount_type === 'net_price') {
     ourCost = parseFloat(formData.supplier_list_price || 0)
   }
@@ -307,10 +331,16 @@ export default function NewProductPage() {
                           type="file"
                           accept="image/*"
                           onChange={handleImageUpload}
+                          disabled={uploading}
                           className="hidden"
                         />
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
-                          {imagePreview ? (
+                        <div className={`border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          {uploading ? (
+                            <div className="flex flex-col items-center">
+                              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-3"></div>
+                              <p className="text-sm text-gray-600">Yükleniyor...</p>
+                            </div>
+                          ) : imagePreview ? (
                             <img 
                               src={imagePreview} 
                               alt="Preview" 
@@ -331,7 +361,7 @@ export default function NewProductPage() {
                       <div className="text-center">
                         <ImagePlus className="w-16 h-16 text-gray-300 mx-auto mb-2" />
                         <p className="text-sm text-gray-600">Görsel yüklendikten sonra</p>
-                        <p className="text-sm text-gray-600">bayi kataloğunda görünecek</p>
+                        <p className="text-sm text-gray-600">bucket üzerinde saklanacak</p>
                       </div>
                     </div>
                   </div>
@@ -496,17 +526,6 @@ export default function NewProductPage() {
                         ))}
                       </select>
                     </div>
-
-                    {supplier && (
-                      <div className="md:col-span-2 p-3 bg-blue-50 rounded-lg">
-                        <p className="text-sm text-gray-700">
-                          <strong>{supplier.name}</strong> - 
-                          {supplier.discount_type === 'percentage' 
-                            ? ` %${supplier.discount_value} iskonto` 
-                            : ` Net fiyat (x${supplier.price_multiplier} çarpan)`}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -534,9 +553,6 @@ export default function NewProductPage() {
                           placeholder="0.00"
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {supplier?.discount_type === 'net_price' ? 'Net alış fiyatı' : 'Tedarikçi liste fiyatı'}
-                      </p>
                     </div>
 
                     {supplier?.discount_type === 'percentage' && (
@@ -601,7 +617,6 @@ export default function NewProductPage() {
                           placeholder="0.00"
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Bayilere gösterilecek liste fiyatı</p>
                     </div>
                   </div>
                 </div>
@@ -650,13 +665,6 @@ export default function NewProductPage() {
 
                   <div className="space-y-3">
                     <div className="p-3 bg-white rounded-lg">
-                      <p className="text-xs text-gray-600 mb-1">Para Birimi</p>
-                      <p className="text-lg font-bold text-gray-900">
-                        {currencySymbols[formData.currency]} {formData.currency}
-                      </p>
-                    </div>
-
-                    <div className="p-3 bg-white rounded-lg">
                       <p className="text-xs text-gray-600 mb-1">Bizim Maliyet</p>
                       <p className="text-xl font-bold text-gray-900">
                         {currencySymbols[formData.currency]}{ourCost.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
@@ -673,7 +681,7 @@ export default function NewProductPage() {
                     {group && (
                       <div className="p-3 bg-white rounded-lg">
                         <p className="text-xs text-gray-600 mb-1">
-                          Bayi İskontosu ({group.code} Grubu)
+                          Bayi İskontosu ({group.code})
                         </p>
                         <p className="text-lg font-semibold text-red-600">
                           %{dealerDiscount.toFixed(0)}
@@ -697,18 +705,9 @@ export default function NewProductPage() {
                         <p className="text-2xl font-bold text-purple-600">
                           %{profitMargin.toFixed(1)}
                         </p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {currencySymbols[formData.currency]}{(dealerNet - ourCost).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} kar
-                        </p>
                       </div>
                     )}
                   </div>
-
-                  {profitMargin < 10 && profitMargin > 0 && (
-                    <div className="mt-4 p-2 bg-yellow-100 rounded text-xs text-yellow-800">
-                      ⚠️ Kar marjı düşük
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -725,13 +724,13 @@ export default function NewProductPage() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || uploading}
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
-                {loading ? (
+                {loading || uploading ? (
                   <>
-                    <div className="animate-spin rounded-full -5 border-b-2 border-white"></div>
-                    <span>Kaydediliyor...</span>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>{uploading ? 'Görsel Yükleniyor...' : 'Kaydediliyor...'}</span>
                   </>
                 ) : (
                   <>
