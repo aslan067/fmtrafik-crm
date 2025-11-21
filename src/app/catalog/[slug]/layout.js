@@ -1,5 +1,5 @@
 'use client'
-// Dynamic route olduğunu belirt
+
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
@@ -13,7 +13,9 @@ export default function CatalogLayout({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadCatalogSettings()
+    if (params.slug) {
+      loadCatalogSettings()
+    }
   }, [params.slug])
 
   async function loadCatalogSettings() {
@@ -25,10 +27,15 @@ export default function CatalogLayout({ children }) {
         .eq('is_active', true)
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Settings error:', error)
+        throw error
+      }
+      
       setSettings(data)
     } catch (error) {
       console.error('Error loading catalog settings:', error)
+      setSettings(null)
     } finally {
       setLoading(false)
     }
@@ -59,7 +66,6 @@ export default function CatalogLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header 
         className="sticky top-0 z-50 shadow-sm"
         style={{ backgroundColor: settings.header_color || '#2563eb' }}
@@ -70,14 +76,14 @@ export default function CatalogLayout({ children }) {
               {settings.logo_url ? (
                 <img 
                   src={settings.logo_url} 
-                  alt={settings.companies.name}
+                  alt={settings.companies?.name || 'Logo'}
                   className="h-10 w-auto"
                 />
               ) : (
                 <div className="flex items-center gap-2">
                   <Package className="w-8 h-8 text-white" />
                   <h1 className="text-xl font-bold text-white">
-                    {settings.companies.name}
+                    {settings.companies?.name || 'Katalog'}
                   </h1>
                 </div>
               )}
@@ -89,7 +95,6 @@ export default function CatalogLayout({ children }) {
         </div>
       </header>
 
-      {/* Custom Message */}
       {settings.custom_message && (
         <div className="bg-blue-50 border-b border-blue-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
@@ -98,16 +103,14 @@ export default function CatalogLayout({ children }) {
         </div>
       )}
 
-      {/* Main Content */}
       <main>
         {children}
       </main>
 
-      {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center text-sm text-gray-600">
-            <p>© {new Date().getFullYear()} {settings.companies.name}. Tüm hakları saklıdır.</p>
+            <p>© {new Date().getFullYear()} {settings.companies?.name || 'Şirket'}. Tüm hakları saklıdır.</p>
           </div>
         </div>
       </footer>
