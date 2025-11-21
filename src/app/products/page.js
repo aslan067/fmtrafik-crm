@@ -75,23 +75,24 @@ export default function ProductsPage() {
               <h1 className="text-3xl font-bold text-gray-900">Ürünler</h1>
               <p className="text-gray-600 mt-1">Ürün kataloğunu yönetin</p>
             </div>
-<div className="flex gap-3">
-  <button 
-    onClick={() => router.push('/products/import')}
-    className="btn-secondary flex items-center gap-2"
-  >
-    <Upload className="w-5 h-5" />
-    Toplu İçe Aktar
-  </button>
-  <button 
-    onClick={() => router.push('/products/new')}
-    className="btn-primary flex items-center gap-2"
-  >
-    <Plus className="w-5 h-5" />
-    Yeni Ürün
-  </button>
-</div>
-</div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => router.push('/products/import')}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Upload className="w-5 h-5" />
+                Toplu İçe Aktar
+              </button>
+              <button 
+                onClick={() => router.push('/products/new')}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                Yeni Ürün
+              </button>
+            </div>
+          </div>
+
           <div className="card mb-6">
             <div className="flex gap-3">
               <div className="flex-1 relative">
@@ -133,31 +134,6 @@ export default function ProductsPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="card">
-              <p className="text-sm text-gray-600">Toplam Ürün</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{products.length}</p>
-            </div>
-            <div className="card">
-              <p className="text-sm text-gray-600">Aktif Ürün</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">
-                {products.filter(p => p.is_active).length}
-              </p>
-            </div>
-            <div className="card">
-              <p className="text-sm text-gray-600">Kategori</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1">{categories.length}</p>
-            </div>
-            <div className="card">
-              <p className="text-sm text-gray-600">Ortalama Fiyat</p>
-              <p className="text-2xl font-bold text-purple-600 mt-1">
-                ₺{products.length > 0 
-                  ? (products.reduce((sum, p) => sum + parseFloat(p.list_price), 0) / products.length).toFixed(0)
-                  : 0}
-              </p>
-            </div>
-          </div>
-
           {filteredProducts.length === 0 ? (
             <div className="card text-center py-12">
               <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -175,7 +151,7 @@ export default function ProductsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProducts.map(product => (
                 <div key={product.id} className="card hover:shadow-lg transition-shadow">
-                  <div className="w-full h-48 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg mb-4 flex items-center justify-center">
+                  <div className="w-full h-48 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
                     {product.image_url ? (
                       <img 
                         src={product.image_url} 
@@ -226,6 +202,7 @@ export default function ProductsPage() {
 
                     <div className="flex gap-2 pt-3 border-t border-gray-200">
                       <button 
+                        onClick={() => router.push(`/products/${product.id}/edit`)}
                         className="flex-1 btn-secondary flex items-center justify-center gap-2 text-sm"
                       >
                         <Edit className="w-4 h-4" />
@@ -234,6 +211,12 @@ export default function ProductsPage() {
                       <button 
                         className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Sil"
+                        onClick={async () => {
+                          if(confirm('Silmek istediğinize emin misiniz?')) {
+                            const { error } = await supabase.from('products').delete().eq('id', product.id)
+                            if(!error) loadProducts()
+                          }
+                        }}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
