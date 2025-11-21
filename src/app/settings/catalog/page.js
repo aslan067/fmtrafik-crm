@@ -248,9 +248,12 @@ export default function CatalogSettingsPage() {
                     URL Slug <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
-                    <span className="inline-flex items-center px-3 py-2 border border-r-0 border-gray-300 bg-gray-50 text-gray-500 rounded-l-lg text-sm">
-                      .../catalog/
-                    </span>
+useEffect(() => {
+  if (typeof window !== 'undefined' && formData.catalog_url_slug) {
+    const origin = window.location.origin
+    setCatalogUrl(`${origin}/catalog/${formData.catalog_url_slug}`)
+  }
+}, [formData.catalog_url_slug])
                     <input
                       type="text"
                       name="catalog_url_slug"
@@ -266,41 +269,41 @@ export default function CatalogSettingsPage() {
                   </p>
                 </div>
 
-                {formData.catalog_url_slug && catalogUrl && (
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-gray-700 mb-2">📍 Katalog Adresi:</p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded text-sm text-blue-600 font-mono overflow-x-auto">
-                        {catalogUrl}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={copyToClipboard}
-                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Kopyalandı
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            Kopyala
-                          </>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.open(catalogUrl, '_blank')}
-                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Önizle
-                      </button>
-                    </div>
-                  </div>
-                )}
+              {formData.catalog_url_slug && catalogUrl && (
+  <div className="p-4 bg-blue-50 rounded-lg">
+    <p className="text-sm text-gray-700 mb-2">📍 Katalog Adresi:</p>
+    <div className="flex items-center gap-2 flex-wrap">
+      <code className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded text-sm text-blue-600 font-mono overflow-x-auto">
+        {catalogUrl}
+      </code>
+      <button
+        type="button"
+        onClick={copyToClipboard}
+        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+      >
+        {copied ? (
+          <>
+            <Check className="w-4 h-4" />
+            Kopyalandı
+          </>
+        ) : (
+          <>
+            <Copy className="w-4 h-4" />
+            Kopyala
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => catalogUrl && window.open(catalogUrl, '_blank')}
+        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+      >
+        <Eye className="w-4 h-4" />
+        Önizle
+      </button>
+    </div>
+  </div>
+)}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
