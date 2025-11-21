@@ -4,6 +4,10 @@ const nextConfig = {
   images: {
     domains: ['supabase.co'],
   },
+  // Katalog sayfalarını dynamic yap
+  experimental: {
+    missingSuspenseWithCSRBailout: false,
+  },
 }
 
 module.exports = nextConfig
