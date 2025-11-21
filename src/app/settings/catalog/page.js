@@ -40,7 +40,6 @@ export default function CatalogSettingsPage() {
     loadSettings()
   }, [])
 
-  // tek doğru yerde useEffect: katalog URL'ini otomatik oluşturur
   useEffect(() => {
     if (typeof window !== 'undefined' && formData.catalog_url_slug) {
       const origin = window.location.origin
@@ -59,22 +58,34 @@ export default function CatalogSettingsPage() {
         return
       }
       
+      // 1. Adım: Sadece kullanıcının şirket ID'sini al (Join kullanmadan)
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('company_id, companies(name)')
+        .select('company_id')
         .eq('id', user.id)
         .single()
 
       if (profileError) throw profileError
-      if (!profile) {
-        setError('Kullanıcı profili bulunamadı.')
+      
+      if (!profile || !profile.company_id) {
+        setError('Kullanıcıya ait şirket profili bulunamadı.')
         setLoading(false)
         return
       }
 
       setCompanyId(profile.company_id)
-      setCompanyName(profile.companies?.name || '')
 
+      // 2. Adım: Şirket adını ayrıca çek (Hata riskini azaltır)
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', profile.company_id)
+        .single()
+
+      const fetchedCompanyName = company ? company.name : ''
+      setCompanyName(fetchedCompanyName)
+
+      // 3. Adım: Katalog ayarlarını çek
       const { data: settings, error: settingsError } = await supabase
         .from('catalog_settings')
         .select('*')
@@ -102,9 +113,8 @@ export default function CatalogSettingsPage() {
           is_active: settings.is_active !== false
         })
       } else {
-        // companies.name varsa varsayılan slug oluştur
-        const companyNameSafe = profile.companies?.name || ''
-        const defaultSlug = companyNameSafe
+        // Ayar yoksa varsayılan slug oluştur
+        const defaultSlug = fetchedCompanyName
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '') || ''
@@ -116,7 +126,7 @@ export default function CatalogSettingsPage() {
       }
     } catch (err) {
       console.error('Error loading settings:', err)
-      setError('Ayarlar yüklenirken hata oluştu')
+      setError('Ayarlar yüklenirken hata oluştu: ' + (err.message || err))
     } finally {
       setLoading(false)
     }
@@ -154,6 +164,11 @@ export default function CatalogSettingsPage() {
         throw new Error('Katalog URL slug\'ı zorunludur')
       }
 
+      if (!companyId) {
+        throw new Error('Şirket bilgisi eksik, sayfa yenilenmeli')
+      }
+
+      // Slug benzersizlik kontrolü (kendi şirketimiz hariç)
       const { data: existingSlugs, error: slugsError } = await supabase
         .from('catalog_settings')
         .select('id, company_id')
@@ -166,6 +181,7 @@ export default function CatalogSettingsPage() {
         throw new Error('Bu katalog URL\'si başka bir şirket tarafından kullanılıyor')
       }
 
+      // Mevcut ayar var mı kontrol et
       const { data: existing, error: existingError } = await supabase
         .from('catalog_settings')
         .select('id')
@@ -196,6 +212,7 @@ export default function CatalogSettingsPage() {
       }
 
       setSuccess('Katalog ayarları başarıyla kaydedildi!')
+      // 3 saniye sonra başarı mesajını kaldır
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       console.error('Error saving settings:', err)
