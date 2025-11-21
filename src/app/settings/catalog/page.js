@@ -40,24 +40,40 @@ export default function CatalogSettingsPage() {
     loadSettings()
   }, [])
 
+  // tek doğru yerde useEffect: katalog URL'ini otomatik oluşturur
   useEffect(() => {
     if (typeof window !== 'undefined' && formData.catalog_url_slug) {
-      setCatalogUrl(`${window.location.origin}/catalog/${formData.catalog_url_slug}`)
+      const origin = window.location.origin
+      setCatalogUrl(`${origin}/catalog/${formData.catalog_url_slug}`)
+    } else {
+      setCatalogUrl('')
     }
   }, [formData.catalog_url_slug])
 
   async function loadSettings() {
     try {
       const user = await getCurrentUser()
+      if (!user) {
+        setError('Kullanıcı bulunamadı. Lütfen giriş yapın.')
+        setLoading(false)
+        return
+      }
       
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('company_id, companies(name)')
         .eq('id', user.id)
         .single()
 
+      if (profileError) throw profileError
+      if (!profile) {
+        setError('Kullanıcı profili bulunamadı.')
+        setLoading(false)
+        return
+      }
+
       setCompanyId(profile.company_id)
-      setCompanyName(profile.companies.name)
+      setCompanyName(profile.companies?.name || '')
 
       const { data: settings, error: settingsError } = await supabase
         .from('catalog_settings')
@@ -86,11 +102,13 @@ export default function CatalogSettingsPage() {
           is_active: settings.is_active !== false
         })
       } else {
-        const defaultSlug = profile.companies.name
+        // companies.name varsa varsayılan slug oluştur
+        const companyNameSafe = profile.companies?.name || ''
+        const defaultSlug = companyNameSafe
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-        
+          .replace(/^-|-$/g, '') || ''
+
         setFormData(prev => ({
           ...prev,
           catalog_url_slug: defaultSlug
@@ -117,7 +135,8 @@ export default function CatalogSettingsPage() {
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '')
       .replace(/--+/g, '-')
-    
+      .replace(/^-|-$/g, '')
+
     setFormData({
       ...formData,
       catalog_url_slug: slug
@@ -135,21 +154,25 @@ export default function CatalogSettingsPage() {
         throw new Error('Katalog URL slug\'ı zorunludur')
       }
 
-      const { data: existingSlugs } = await supabase
+      const { data: existingSlugs, error: slugsError } = await supabase
         .from('catalog_settings')
         .select('id, company_id')
         .eq('catalog_url_slug', formData.catalog_url_slug)
         .neq('company_id', companyId)
 
+      if (slugsError) throw slugsError
+
       if (existingSlugs && existingSlugs.length > 0) {
         throw new Error('Bu katalog URL\'si başka bir şirket tarafından kullanılıyor')
       }
 
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('catalog_settings')
         .select('id')
         .eq('company_id', companyId)
         .single()
+
+      if (existingError && existingError.code !== 'PGRST116') throw existingError
 
       const dataToSave = {
         company_id: companyId,
@@ -183,6 +206,7 @@ export default function CatalogSettingsPage() {
   }
 
   const copyToClipboard = () => {
+    if (!catalogUrl) return
     navigator.clipboard.writeText(catalogUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -248,12 +272,6 @@ export default function CatalogSettingsPage() {
                     URL Slug <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
-useEffect(() => {
-  if (typeof window !== 'undefined' && formData.catalog_url_slug) {
-    const origin = window.location.origin
-    setCatalogUrl(`${origin}/catalog/${formData.catalog_url_slug}`)
-  }
-}, [formData.catalog_url_slug])
                     <input
                       type="text"
                       name="catalog_url_slug"
@@ -269,41 +287,41 @@ useEffect(() => {
                   </p>
                 </div>
 
-              {formData.catalog_url_slug && catalogUrl && (
-  <div className="p-4 bg-blue-50 rounded-lg">
-    <p className="text-sm text-gray-700 mb-2">📍 Katalog Adresi:</p>
-    <div className="flex items-center gap-2 flex-wrap">
-      <code className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded text-sm text-blue-600 font-mono overflow-x-auto">
-        {catalogUrl}
-      </code>
-      <button
-        type="button"
-        onClick={copyToClipboard}
-        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-      >
-        {copied ? (
-          <>
-            <Check className="w-4 h-4" />
-            Kopyalandı
-          </>
-        ) : (
-          <>
-            <Copy className="w-4 h-4" />
-            Kopyala
-          </>
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={() => catalogUrl && window.open(catalogUrl, '_blank')}
-        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-      >
-        <Eye className="w-4 h-4" />
-        Önizle
-      </button>
-    </div>
-  </div>
-)}
+                {formData.catalog_url_slug && catalogUrl && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-700 mb-2">📍 Katalog Adresi:</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <code className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded text-sm text-blue-600 font-mono overflow-x-auto">
+                        {catalogUrl}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={copyToClipboard}
+                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            Kopyalandı
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Kopyala
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => catalogUrl && window.open(catalogUrl, '_blank')}
+                        className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Önizle
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
