@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
 import { 
   Save, Plus, Trash2, Search, Calculator, FileText, 
-  CreditCard, Globe, Image as ImageIcon, TrendingUp, AlertCircle, Check, RefreshCw, User, Copy, MoreHorizontal
+  CreditCard, Globe, Image as ImageIcon, TrendingUp, AlertCircle, 
+  Check, RefreshCw, User, Copy, ChevronDown, Settings, Ruler
 } from 'lucide-react'
 
 export default function NewQuotePage() {
@@ -17,9 +18,13 @@ export default function NewQuotePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
+  // UI State
+  const [isBankDropdownOpen, setIsBankDropdownOpen] = useState(false)
+  const bankDropdownRef = useRef(null)
+
   // Veri Setleri
   const [customers, setCustomers] = useState([])
-  const [customerContacts, setCustomerContacts] = useState([]) // Müşteri kontakları
+  const [customerContacts, setCustomerContacts] = useState([])
   const [products, setProducts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
   const [companyTerms, setCompanyTerms] = useState({ tr: '', en: '' })
@@ -27,17 +32,18 @@ export default function NewQuotePage() {
   // Form State
   const [formData, setFormData] = useState({
     customer_id: preSelectedCustomerId || '',
-    contact_id: '', // Yeni: Kontak Kişi
+    contact_id: '',
     title: '',
     valid_until: '',
     currency: 'TRY',
     exchange_rate: 1.00,
     template_code: 'standard_tr',
-    selected_bank_ids: [], // Yeni: Çoklu Banka
-    show_product_images: true,
+    selected_bank_ids: [],
+    show_product_images: true,   // Görsel Gösterimi
+    show_specifications: false,  // YENİ: Teknik Özellik Gösterimi
     notes: '',
     terms: '', 
-    default_tax_rate: 20, // Varsayılan KDV (Yeni eklenen satırlar için)
+    default_tax_rate: 20,
     discount_percentage: 0
   })
 
@@ -49,7 +55,7 @@ export default function NewQuotePage() {
       quantity: 1, 
       list_price: 0, 
       discount_percentage: 0, 
-      tax_rate: 20, // Satır bazlı KDV
+      tax_rate: 20, 
       unit_price: 0, 
       total_price: 0, 
       cost_price: 0, 
@@ -65,25 +71,29 @@ export default function NewQuotePage() {
 
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
 
-  // --- Yükleme ve Effect'ler ---
+  // --- Effect'ler ---
 
   useEffect(() => {
     loadInitialData()
     const date = new Date()
     date.setDate(date.getDate() + 15)
     setFormData(prev => ({ ...prev, valid_until: date.toISOString().split('T')[0] }))
+
+    // Dropdown dışına tıklayınca kapatma
+    function handleClickOutside(event) {
+      if (bankDropdownRef.current && !bankDropdownRef.current.contains(event.target)) {
+        setIsBankDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Müşteri değişince kontakları getir
   useEffect(() => {
-    if (formData.customer_id) {
-      loadCustomerContacts(formData.customer_id)
-    } else {
-      setCustomerContacts([])
-    }
+    if (formData.customer_id) loadCustomerContacts(formData.customer_id)
+    else setCustomerContacts([])
   }, [formData.customer_id])
 
-  // Şablon değişince şartları güncelle
   useEffect(() => {
     if (formData.template_code === 'standard_tr') {
       setFormData(prev => ({ ...prev, terms: companyTerms.tr }))
@@ -92,19 +102,17 @@ export default function NewQuotePage() {
     }
   }, [formData.template_code, companyTerms])
 
-  // Kur değişince fiyatları güncelle
   useEffect(() => {
-    if (items.length > 0 && items[0].product_id) {
-      recalculateAllItems()
-    }
+    if (items.length > 0 && items[0].product_id) recalculateAllItems()
   }, [formData.currency, formData.exchange_rate])
 
-  // Varsayılan KDV değişince, henüz ürün seçilmemiş satırları güncelle
   useEffect(() => {
     setItems(prev => prev.map(item => 
       !item.product_id ? { ...item, tax_rate: formData.default_tax_rate } : item
     ))
   }, [formData.default_tax_rate])
+
+  // --- Veri Yükleme ---
 
   async function loadInitialData() {
     try {
@@ -127,10 +135,11 @@ export default function NewQuotePage() {
       setCompanyTerms({ tr: trTerms, en: enTerms })
       setFormData(prev => ({ ...prev, terms: trTerms }))
 
-      // İlk bankayı varsayılan seç
       if (bankRes.data?.length > 0) {
-        const defaultBank = bankRes.data.find(b => b.currency === 'TRY') || bankRes.data[0]
-        setFormData(prev => ({ ...prev, selected_bank_ids: [defaultBank.id] }))
+        // Sadece TRY hesaplarını varsayılan seç
+        const defaultBanks = bankRes.data.filter(b => b.currency === 'TRY').map(b => b.id)
+        if(defaultBanks.length > 0) setFormData(prev => ({ ...prev, selected_bank_ids: defaultBanks }))
+        else setFormData(prev => ({ ...prev, selected_bank_ids: [bankRes.data[0].id] }))
       }
 
     } catch (err) {
@@ -140,19 +149,14 @@ export default function NewQuotePage() {
   }
 
   async function loadCustomerContacts(customerId) {
-    const { data } = await supabase
-      .from('customer_contacts')
-      .select('*')
-      .eq('customer_id', customerId)
-    
+    const { data } = await supabase.from('customer_contacts').select('*').eq('customer_id', customerId)
     setCustomerContacts(data || [])
-    // Eğer primary kontak varsa onu seç
     const primary = data?.find(c => c.is_primary)
     if (primary) setFormData(prev => ({ ...prev, contact_id: primary.id }))
     else setFormData(prev => ({ ...prev, contact_id: '' }))
   }
 
-  // --- Fiyat Motoru ---
+  // --- Mantık ve Hesaplama ---
 
   const convertPrice = (price, fromCurrency, toCurrency, rate) => {
     if (!price) return 0
@@ -185,13 +189,10 @@ export default function NewQuotePage() {
     const newItems = [...items]
     const item = newItems[index]
     
-    // Çift Yönlü Hesaplama Mantığı
     if (field === 'unit_price') {
-      // Net fiyat girildi -> İskontoyu hesapla
       const newListPrice = item.list_price || 0
       const newUnitPrice = parseFloat(value) || 0
       item.unit_price = newUnitPrice
-      
       if (newListPrice > 0) {
         const discount = ((newListPrice - newUnitPrice) / newListPrice) * 100
         item.discount_percentage = parseFloat(discount.toFixed(2))
@@ -199,16 +200,13 @@ export default function NewQuotePage() {
         item.discount_percentage = 0
       }
     } else if (field === 'discount_percentage') {
-      // İskonto girildi -> Net fiyatı hesapla
       const discount = parseFloat(value) || 0
       item.discount_percentage = discount
       item.unit_price = (item.list_price || 0) * (1 - discount / 100)
     } else {
-      // Diğer alanlar
       item[field] = value
     }
 
-    // Ürün Seçimi
     if (field === 'product_id') {
       const product = products.find(p => p.id === value)
       if (product) {
@@ -216,24 +214,22 @@ export default function NewQuotePage() {
         item.original_currency = product.currency || 'TRY'
         item.original_list_price = parseFloat(product.dealer_list_price)
         item.original_cost_price = parseFloat(product.our_cost_price)
-        item.tax_rate = formData.default_tax_rate // Varsayılan KDV'yi uygula
+        item.tax_rate = formData.default_tax_rate
         
         item.list_price = convertPrice(item.original_list_price, item.original_currency, formData.currency, formData.exchange_rate)
         item.cost_price = convertPrice(item.original_cost_price, item.original_currency, formData.currency, formData.exchange_rate)
         
-        item.unit_price = item.list_price // İskonto 0 başlar
+        item.unit_price = item.list_price
         item.discount_percentage = 0
       }
     }
 
-    // Toplam Güncelle
     const quantity = parseFloat(item.quantity) || 0
     item.total_price = (item.unit_price || 0) * quantity
 
     setItems(newItems)
   }
 
-  // BONUS: Satır Kopyalama
   const cloneItem = (index) => {
     const itemToClone = items[index]
     const newItem = { ...itemToClone, id: Date.now() }
@@ -266,8 +262,6 @@ export default function NewQuotePage() {
     const generalDiscountAmount = subtotal * (parseFloat(formData.discount_percentage) || 0) / 100
     const subtotalAfterDiscount = subtotal - generalDiscountAmount
     
-    // Genel iskonto sonrası vergi düzeltmesi (Basit oran)
-    // Not: Gerçek muhasebede satır bazlı iskonto daha doğrudur, burada genel iskonto vergi matrahını düşürür.
     const taxMultiplier = subtotal > 0 ? subtotalAfterDiscount / subtotal : 1
     const finalTaxAmount = totalTax * taxMultiplier
     
@@ -279,8 +273,6 @@ export default function NewQuotePage() {
   }
 
   const totals = calculateTotals()
-
-  // --- Kayıt ---
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -294,10 +286,7 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // Güvenli Numara Üretme
-      const { data: quoteNumber, error: rpcError } = await supabase
-        .rpc('get_next_quote_number', { p_company_id: profile.company_id })
-
+      const { data: quoteNumber, error: rpcError } = await supabase.rpc('get_next_quote_number', { p_company_id: profile.company_id })
       if (rpcError) throw rpcError
 
       const { data: quote, error: quoteError } = await supabase
@@ -305,13 +294,14 @@ export default function NewQuotePage() {
         .insert([{
           company_id: profile.company_id,
           customer_id: formData.customer_id,
-          contact_id: formData.contact_id || null, // Kontak
+          contact_id: formData.contact_id || null,
           quote_number: quoteNumber,
           title: formData.title || `Teklif #${quoteNumber}`,
           status: 'draft',
           template_code: formData.template_code,
-          selected_bank_ids: formData.selected_bank_ids, // Çoklu Banka
+          selected_bank_ids: formData.selected_bank_ids,
           show_product_images: formData.show_product_images,
+          show_specifications: formData.show_specifications, // Yeni alan
           currency: formData.currency,
           exchange_rate: parseFloat(formData.exchange_rate),
           subtotal: totals.subtotal,
@@ -336,7 +326,7 @@ export default function NewQuotePage() {
         quantity: item.quantity,
         list_price: item.list_price,
         discount_percentage: item.discount_percentage,
-        tax_rate: item.tax_rate, // Satır KDV
+        tax_rate: item.tax_rate,
         unit_price: item.unit_price,
         total_price: item.total_price,
         sort_order: idx
@@ -360,7 +350,7 @@ export default function NewQuotePage() {
       <div className="p-6 min-h-screen bg-gray-50/50">
         <div className="max-w-[1600px] mx-auto">
           
-          {/* Header ve Kâr Göstergesi */}
+          {/* Üst Bar: Başlık ve Kâr */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Yeni Teklif Oluştur</h1>
@@ -388,9 +378,10 @@ export default function NewQuotePage() {
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             
-            {/* SOL KOLON (AYARLAR) */}
+            {/* SOL KOLON (3/12) */}
             <div className="xl:col-span-3 space-y-6">
               
+              {/* Müşteri */}
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
@@ -401,10 +392,9 @@ export default function NewQuotePage() {
                   </select>
                 </div>
                 
-                {/* YENİ: Kontak Seçimi */}
                 {formData.customer_id && (
                   <div>
-                    <label className="label-text">İlgili Kişi (Opsiyonel)</label>
+                    <label className="label-text">İlgili Kişi</label>
                     <select name="contact_id" value={formData.contact_id} onChange={(e)=>setFormData({...formData, contact_id:e.target.value})} className="input-field">
                       <option value="">Seçiniz...</option>
                       {customerContacts.map(c => (
@@ -424,10 +414,11 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
+              {/* Para & Banka */}
               <div className="card space-y-4 bg-blue-50/50 border-blue-100">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Para Birimi & Kur</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Ödeme & Banka</h3>
                 <div>
-                  <label className="label-text">Teklif Para Birimi</label>
+                  <label className="label-text">Para Birimi</label>
                   <select value={formData.currency} onChange={(e)=>setFormData({...formData, currency:e.target.value})} className="input-field">
                     <option value="TRY">Türk Lirası (TRY)</option>
                     <option value="USD">Amerikan Doları (USD)</option>
@@ -436,7 +427,7 @@ export default function NewQuotePage() {
                 </div>
                 <div>
                   <label className="label-text flex justify-between">
-                    <span>Kur (Exchange Rate)</span>
+                    <span>Kur</span>
                     <span className="text-blue-600 cursor-pointer" onClick={()=>setFormData({...formData, exchange_rate: 1})}>Sıfırla</span>
                   </label>
                   <div className="relative">
@@ -445,28 +436,47 @@ export default function NewQuotePage() {
                   </div>
                 </div>
                 
-                {/* YENİ: Çoklu Banka Seçimi */}
-                <div>
-                  <label className="label-text mb-2">Banka Hesapları</label>
-                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white">
-                    {bankAccounts.map(b => (
-                      <label key={b.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.selected_bank_ids.includes(b.id)}
-                          onChange={() => toggleBankSelection(b.id)}
-                          className="rounded text-blue-600"
-                        />
-                        <span className="text-sm">{b.bank_name} ({b.currency})</span>
-                      </label>
-                    ))}
-                    {bankAccounts.length === 0 && <p className="text-xs text-gray-400 p-2">Kayıtlı banka yok.</p>}
-                  </div>
+                {/* MODERN ÇOKLU BANKA SEÇİMİ (Dropdown) */}
+                <div className="relative" ref={bankDropdownRef}>
+                  <label className="label-text mb-1">Banka Hesapları</label>
+                  <button 
+                    type="button"
+                    onClick={() => setIsBankDropdownOpen(!isBankDropdownOpen)}
+                    className="input-field w-full text-left flex justify-between items-center bg-white"
+                  >
+                    <span className="truncate text-sm">
+                      {formData.selected_bank_ids.length > 0 
+                        ? `${formData.selected_bank_ids.length} banka seçildi` 
+                        : 'Banka Seçiniz'}
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-gray-500"/>
+                  </button>
+                  
+                  {isBankDropdownOpen && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                      {bankAccounts.map(b => (
+                        <label key={b.id} className="flex items-center gap-3 p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 border-gray-50 transition-colors">
+                          <input 
+                            type="checkbox" 
+                            checked={formData.selected_bank_ids.includes(b.id)}
+                            onChange={() => toggleBankSelection(b.id)}
+                            className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">{b.bank_name}</p>
+                            <p className="text-xs text-gray-500">{b.currency} - {b.iban}</p>
+                          </div>
+                        </label>
+                      ))}
+                      {bankAccounts.length === 0 && <p className="p-4 text-sm text-gray-500 text-center">Kayıtlı banka hesabı yok.</p>}
+                    </div>
+                  )}
                 </div>
               </div>
 
+              {/* Şablon & Görünüm */}
               <div className="card space-y-4">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Globe className="w-4 h-4"/> Şablon</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Şablon & Görünüm</h3>
                 <div className="grid grid-cols-1 gap-2">
                   {templates.map(t => (
                     <button type="button" key={t.id} onClick={() => setFormData({...formData, template_code: t.id})} className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${formData.template_code === t.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -476,24 +486,36 @@ export default function NewQuotePage() {
                     </button>
                   ))}
                 </div>
+                
+                <div className="space-y-2 pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 rounded border border-transparent hover:border-gray-200 transition-all">
+                    <input type="checkbox" checked={formData.show_product_images} onChange={(e)=>setFormData({...formData, show_product_images:e.target.checked})} className="rounded text-blue-600 w-4 h-4" />
+                    <span className="text-sm text-gray-700 flex items-center gap-2 font-medium"><ImageIcon className="w-4 h-4 text-blue-500"/> Görselleri Göster</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 rounded border border-transparent hover:border-gray-200 transition-all">
+                    <input type="checkbox" checked={formData.show_specifications} onChange={(e)=>setFormData({...formData, show_specifications:e.target.checked})} className="rounded text-blue-600 w-4 h-4" />
+                    <span className="text-sm text-gray-700 flex items-center gap-2 font-medium"><Ruler className="w-4 h-4 text-purple-500"/> Teknik Özellikleri Göster</span>
+                  </label>
+                </div>
               </div>
+
             </div>
 
-            {/* SAĞ KOLON (ÜRÜNLER) */}
+            {/* SAĞ KOLON (9/12) */}
             <div className="xl:col-span-9 space-y-6">
               <div className="card min-h-[400px]">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-semibold text-lg">Teklif Kalemleri</h3>
                   <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg">
-                      <span className="text-xs text-gray-500">Varsayılan KDV:</span>
+                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg border border-gray-200">
+                      <span className="text-xs text-gray-600 font-medium">Varsayılan KDV:</span>
                       <input 
                         type="number" 
                         value={formData.default_tax_rate}
                         onChange={(e) => setFormData({...formData, default_tax_rate: parseFloat(e.target.value) || 0})}
-                        className="w-12 bg-transparent font-bold text-sm text-center outline-none border-b border-gray-300"
+                        className="w-12 bg-transparent font-bold text-sm text-center outline-none border-b border-gray-300 focus:border-blue-500"
                       />
-                      <span className="text-xs">%</span>
+                      <span className="text-xs font-bold">%</span>
                     </div>
                     <button type="button" onClick={() => setItems([...items, { id: Date.now(), product_id: '', quantity: 1, list_price:0, discount_percentage:0, unit_price:0, total_price:0, tax_rate: formData.default_tax_rate }])} className="btn-secondary text-sm flex items-center gap-2">
                       <Plus className="w-4 h-4"/> Satır Ekle
@@ -505,44 +527,42 @@ export default function NewQuotePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 text-left border-b border-gray-200">
-                        <th className="p-3 w-[30%] text-gray-600">Ürün / Hizmet</th>
-                        <th className="p-3 w-[10%] text-center text-gray-600">Miktar</th>
-                        <th className="p-3 w-[12%] text-right text-gray-600">Liste Fiyatı</th>
-                        <th className="p-3 w-[10%] text-center text-gray-600">İsk. %</th>
-                        <th className="p-3 w-[12%] text-right text-gray-600">Net Birim</th>
-                        <th className="p-3 w-[8%] text-center text-gray-600">KDV</th>
-                        <th className="p-3 w-[13%] text-right text-gray-600">Toplam</th>
+                        <th className="p-3 w-[30%] text-gray-600 font-semibold">Ürün / Hizmet</th>
+                        <th className="p-3 w-[10%] text-center text-gray-600 font-semibold">Miktar</th>
+                        <th className="p-3 w-[12%] text-right text-gray-600 font-semibold">Liste Fiyatı</th>
+                        <th className="p-3 w-[10%] text-center text-gray-600 font-semibold">İsk. %</th>
+                        <th className="p-3 w-[12%] text-right text-gray-600 font-semibold">Net Birim</th>
+                        <th className="p-3 w-[8%] text-center text-gray-600 font-semibold">KDV</th>
+                        <th className="p-3 w-[13%] text-right text-gray-600 font-semibold">Toplam</th>
                         <th className="p-3 w-[5%]"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {items.map((item, index) => {
-                        // Satır bazlı kar kontrolü (Bonus)
                         const isProfitable = item.unit_price > (item.cost_price || 0)
-                        const isCritical = item.unit_price > 0 && item.unit_price < (item.cost_price * 1.1) // %10 marj altı
+                        const isCritical = item.unit_price > 0 && item.unit_price < (item.cost_price * 1.1)
 
                         return (
                           <tr key={item.id} className="group hover:bg-blue-50/50 transition-colors">
                             <td className="p-2 relative">
-                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r ${isProfitable ? (isCritical ? 'bg-yellow-400' : 'bg-green-500') : 'bg-red-500'}`} title="Karlılık Durumu"></div>
-                              <select value={item.product_id} onChange={(e)=>handleItemChange(index, 'product_id', e.target.value)} className="input-field mb-1 text-sm">
+                              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r ${isProfitable ? (isCritical ? 'bg-yellow-400' : 'bg-green-500') : 'bg-red-500'}`} title="Kârlılık Durumu"></div>
+                              <select value={item.product_id} onChange={(e)=>handleItemChange(index, 'product_id', e.target.value)} className="input-field mb-1 text-sm font-medium">
                                 <option value="">Ürün Seçin...</option>
                                 {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                               </select>
-                              <input type="text" value={item.description} onChange={(e)=>handleItemChange(index, 'description', e.target.value)} className="input-field text-xs bg-transparent border-transparent focus:bg-white focus:border-blue-500 px-1" placeholder="Açıklama..." />
+                              <input type="text" value={item.description} onChange={(e)=>handleItemChange(index, 'description', e.target.value)} className="input-field text-xs bg-transparent border-transparent focus:bg-white focus:border-blue-500 px-1 text-gray-500" placeholder="Açıklama..." />
                             </td>
                             <td className="p-2"><input type="number" value={item.quantity} onChange={(e)=>handleItemChange(index, 'quantity', e.target.value)} className="input-field text-center" min="1" /></td>
-                            <td className="p-2"><input type="number" value={item.list_price} onChange={(e)=>handleItemChange(index, 'list_price', e.target.value)} className="input-field text-right" step="0.01" disabled /></td>
-                            <td className="p-2"><input type="number" value={item.discount_percentage} onChange={(e)=>handleItemChange(index, 'discount_percentage', e.target.value)} className="input-field text-center text-red-600" min="0" max="100" /></td>
+                            <td className="p-2"><input type="number" value={item.list_price} onChange={(e)=>handleItemChange(index, 'list_price', e.target.value)} className="input-field text-right text-gray-500" step="0.01" disabled /></td>
+                            <td className="p-2"><input type="number" value={item.discount_percentage} onChange={(e)=>handleItemChange(index, 'discount_percentage', e.target.value)} className="input-field text-center text-red-600 font-medium" min="0" max="100" /></td>
                             <td className="p-2">
-                              {/* Esnek Fiyatlandırma: Net fiyat değişirse iskonto hesaplanır */}
-                              <input type="number" value={item.unit_price} onChange={(e)=>handleItemChange(index, 'unit_price', e.target.value)} className="input-field text-right font-medium" step="0.01" />
+                              <input type="number" value={item.unit_price} onChange={(e)=>handleItemChange(index, 'unit_price', e.target.value)} className="input-field text-right font-bold text-gray-800" step="0.01" />
                             </td>
                             <td className="p-2"><input type="number" value={item.tax_rate} onChange={(e)=>handleItemChange(index, 'tax_rate', e.target.value)} className="input-field text-center text-xs" /></td>
                             <td className="p-2 text-right font-bold text-gray-900">{currencySymbols[formData.currency]}{item.total_price.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                             <td className="p-2 text-center flex flex-col gap-1">
-                              <button type="button" onClick={()=>cloneItem(index)} className="text-blue-400 hover:text-blue-600" title="Kopyala"><Copy className="w-4 h-4"/></button>
-                              <button type="button" onClick={()=>setItems(items.filter((_,i)=>i!==index))} className="text-gray-400 hover:text-red-500" title="Sil"><Trash2 className="w-4 h-4"/></button>
+                              <button type="button" onClick={()=>cloneItem(index)} className="text-blue-400 hover:text-blue-600 hover:bg-blue-50 p-1 rounded transition-colors" title="Kopyala"><Copy className="w-4 h-4"/></button>
+                              <button type="button" onClick={()=>setItems(items.filter((_,i)=>i!==index))} className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors" title="Sil"><Trash2 className="w-4 h-4"/></button>
                             </td>
                           </tr>
                         )
@@ -555,7 +575,7 @@ export default function NewQuotePage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="card space-y-4">
                   <h3 className="font-semibold text-gray-900">Şartlar ve Notlar</h3>
-                  <div><label className="label-text">Teklif Şartları</label><textarea value={formData.terms} onChange={(e)=>setFormData({...formData, terms:e.target.value})} rows={4} className="input-field text-sm" /></div>
+                  <div><label className="label-text">Teklif Şartları</label><textarea value={formData.terms} onChange={(e)=>setFormData({...formData, terms:e.target.value})} rows={6} className="input-field text-sm font-mono bg-gray-50" /></div>
                   <div><label className="label-text">Özel Notlar</label><textarea value={formData.notes} onChange={(e)=>setFormData({...formData, notes:e.target.value})} rows={2} className="input-field text-sm" placeholder="Müşteriye not..." /></div>
                 </div>
 
@@ -563,7 +583,7 @@ export default function NewQuotePage() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-gray-600"><span>Ara Toplam</span><span className="font-medium">{currencySymbols[formData.currency]}{totals.subtotal.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                     <div className="flex justify-between items-center text-gray-600"><span className="flex items-center gap-2">Genel İskonto <input type="number" value={formData.discount_percentage} onChange={(e)=>setFormData({...formData, discount_percentage:e.target.value})} className="w-16 input-field py-0 px-1 text-center text-sm" min="0" max="100"/> %</span><span className="text-red-600">-{currencySymbols[formData.currency]}{totals.generalDiscountAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
-                    <div className="flex justify-between items-center text-gray-600"><span>Toplam KDV</span><span>{currencySymbols[formData.currency]}{totals.finalTaxAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
+                    <div className="flex justify-between items-center text-gray-600"><span className="flex items-center gap-2">KDV Toplamı</span><span>{currencySymbols[formData.currency]}{totals.finalTaxAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                     <div className="pt-4 border-t border-gray-300 flex justify-between items-center"><span className="text-lg font-bold text-gray-900">GENEL TOPLAM</span><span className="text-2xl font-bold text-blue-700">{currencySymbols[formData.currency]}{totals.total.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                   </div>
                   <div className="mt-6 pt-6 border-t border-gray-200">
