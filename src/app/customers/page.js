@@ -157,23 +157,6 @@ export default function CustomersPage() {
                     <option value="inactive">Pasif</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Eklenme Tarihi</label>
-                  <select className="input-field">
-                    <option value="">Tümü</option>
-                    <option value="today">Bugün</option>
-                    <option value="week">Bu Hafta</option>
-                    <option value="month">Bu Ay</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Sıralama</label>
-                  <select className="input-field">
-                    <option value="name">İsim (A-Z)</option>
-                    <option value="date-desc">Tarih (Yeni-Eski)</option>
-                    <option value="date-asc">Tarih (Eski-Yeni)</option>
-                  </select>
-                </div>
               </div>
             )}
           </div>
