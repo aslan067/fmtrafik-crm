@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
+// İkonları güvenli olanlarla değiştirdik ve List ismini ListIcon yaptık çakışma olmasın diye
 import { 
   Save, AlertCircle, Globe, Eye, Copy, Check, 
-  Palette, ToggleLeft, Grid3x3, List, ArrowLeft
+  Palette, ArrowLeft, LayoutGrid, List as ListIcon, ToggleLeft
 } from 'lucide-react'
 
 export default function CatalogSettingsPage() {
@@ -17,9 +18,9 @@ export default function CatalogSettingsPage() {
   const [success, setSuccess] = useState('')
   const [copied, setCopied] = useState(false)
   const [companyId, setCompanyId] = useState(null)
-  const [companyName, setCompanyName] = useState('')
   const [catalogUrl, setCatalogUrl] = useState('')
   
+  // Form datayı başlangıçta boş stringlerle başlattık (null olmamalı)
   const [formData, setFormData] = useState({
     catalog_url_slug: '',
     catalog_title: 'Ürün Kataloğu',
@@ -58,7 +59,6 @@ export default function CatalogSettingsPage() {
         return
       }
       
-      // 1. Adım: Sadece kullanıcının şirket ID'sini al (Join kullanmadan)
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('company_id')
@@ -75,17 +75,15 @@ export default function CatalogSettingsPage() {
 
       setCompanyId(profile.company_id)
 
-      // 2. Adım: Şirket adını ayrıca çek (Hata riskini azaltır)
-      const { data: company, error: companyError } = await supabase
+      // Şirket adını çek (Varsayılan slug için)
+      const { data: company } = await supabase
         .from('companies')
         .select('name')
         .eq('id', profile.company_id)
         .single()
 
       const fetchedCompanyName = company ? company.name : ''
-      setCompanyName(fetchedCompanyName)
 
-      // 3. Adım: Katalog ayarlarını çek
       const { data: settings, error: settingsError } = await supabase
         .from('catalog_settings')
         .select('*')
@@ -113,7 +111,6 @@ export default function CatalogSettingsPage() {
           is_active: settings.is_active !== false
         })
       } else {
-        // Ayar yoksa varsayılan slug oluştur
         const defaultSlug = fetchedCompanyName
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
@@ -126,7 +123,8 @@ export default function CatalogSettingsPage() {
       }
     } catch (err) {
       console.error('Error loading settings:', err)
-      setError('Ayarlar yüklenirken hata oluştu: ' + (err.message || err))
+      // HATA DÜZELTME: Hatayı kesinlikle string'e çeviriyoruz
+      setError(String(err?.message || err || 'Bilinmeyen bir hata oluştu'))
     } finally {
       setLoading(false)
     }
@@ -134,10 +132,10 @@ export default function CatalogSettingsPage() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       [name]: type === 'checkbox' ? checked : value
-    })
+    }))
   }
 
   const handleSlugChange = (e) => {
@@ -147,10 +145,10 @@ export default function CatalogSettingsPage() {
       .replace(/--+/g, '-')
       .replace(/^-|-$/g, '')
 
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       catalog_url_slug: slug
-    })
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -168,7 +166,6 @@ export default function CatalogSettingsPage() {
         throw new Error('Şirket bilgisi eksik, sayfa yenilenmeli')
       }
 
-      // Slug benzersizlik kontrolü (kendi şirketimiz hariç)
       const { data: existingSlugs, error: slugsError } = await supabase
         .from('catalog_settings')
         .select('id, company_id')
@@ -181,7 +178,6 @@ export default function CatalogSettingsPage() {
         throw new Error('Bu katalog URL\'si başka bir şirket tarafından kullanılıyor')
       }
 
-      // Mevcut ayar var mı kontrol et
       const { data: existing, error: existingError } = await supabase
         .from('catalog_settings')
         .select('id')
@@ -212,11 +208,11 @@ export default function CatalogSettingsPage() {
       }
 
       setSuccess('Katalog ayarları başarıyla kaydedildi!')
-      // 3 saniye sonra başarı mesajını kaldır
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       console.error('Error saving settings:', err)
-      setError(err.message || 'Ayarlar kaydedilirken hata oluştu')
+      // HATA DÜZELTME: Hatayı kesinlikle string'e çeviriyoruz
+      setError(String(err?.message || err || 'Kaydetme hatası'))
     } finally {
       setSaving(false)
     }
@@ -261,6 +257,7 @@ export default function CatalogSettingsPage() {
             </p>
           </div>
 
+          {/* Hata ve Başarı Mesajları - Sadece String render edilir */}
           {success && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
               <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -292,7 +289,7 @@ export default function CatalogSettingsPage() {
                     <input
                       type="text"
                       name="catalog_url_slug"
-                      value={formData.catalog_url_slug}
+                      value={formData.catalog_url_slug || ''}
                       onChange={handleSlugChange}
                       required
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -347,7 +344,7 @@ export default function CatalogSettingsPage() {
                   <input
                     type="text"
                     name="catalog_title"
-                    value={formData.catalog_title}
+                    value={formData.catalog_title || ''}
                     onChange={handleChange}
                     className="input-field"
                     placeholder="Ürün Kataloğu"
@@ -359,7 +356,7 @@ export default function CatalogSettingsPage() {
             {/* Görünüm Modu */}
             <div className="card">
               <div className="flex items-center gap-2 mb-4">
-                <Grid3x3 className="w-5 h-5 text-purple-600" />
+                <LayoutGrid className="w-5 h-5 text-purple-600" />
                 <h2 className="text-lg font-semibold text-gray-900">Görünüm Modu</h2>
               </div>
 
@@ -377,7 +374,7 @@ export default function CatalogSettingsPage() {
                     onChange={handleChange}
                     className="sr-only"
                   />
-                  <Grid3x3 className={`w-8 h-8 mb-2 ${
+                  <LayoutGrid className={`w-8 h-8 mb-2 ${
                     formData.view_mode === 'grid' ? 'text-blue-600' : 'text-gray-400'
                   }`} />
                   <span className={`font-medium ${
@@ -403,7 +400,7 @@ export default function CatalogSettingsPage() {
                     onChange={handleChange}
                     className="sr-only"
                   />
-                  <List className={`w-8 h-8 mb-2 ${
+                  <ListIcon className={`w-8 h-8 mb-2 ${
                     formData.view_mode === 'list' ? 'text-blue-600' : 'text-gray-400'
                   }`} />
                   <span className={`font-medium ${
@@ -434,13 +431,13 @@ export default function CatalogSettingsPage() {
                     <input
                       type="color"
                       name="header_color"
-                      value={formData.header_color}
+                      value={formData.header_color || '#2563eb'}
                       onChange={handleChange}
                       className="h-10 w-20 rounded border border-gray-300 cursor-pointer"
                     />
                     <input
                       type="text"
-                      value={formData.header_color}
+                      value={formData.header_color || '#2563eb'}
                       onChange={(e) => setFormData({ ...formData, header_color: e.target.value })}
                       className="input-field w-32 font-mono text-sm"
                     />
@@ -455,7 +452,7 @@ export default function CatalogSettingsPage() {
                   <input
                     type="url"
                     name="logo_url"
-                    value={formData.logo_url}
+                    value={formData.logo_url || ''}
                     onChange={handleChange}
                     className="input-field"
                     placeholder="https://example.com/logo.png"
@@ -468,7 +465,7 @@ export default function CatalogSettingsPage() {
                   </label>
                   <textarea
                     name="custom_message"
-                    value={formData.custom_message}
+                    value={formData.custom_message || ''}
                     onChange={handleChange}
                     rows={3}
                     className="input-field"
