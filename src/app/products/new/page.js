@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
-import { Save, X, Calculator, TrendingUp, AlertCircle, Upload, ImagePlus } from 'lucide-react'
+import { Save, X, Calculator, TrendingUp, AlertCircle, Upload, ImagePlus, DollarSign, Percent } from 'lucide-react'
 
 export default function NewProductPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState(false) // Görsel yükleme durumu
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
   const [suppliers, setSuppliers] = useState([])
@@ -24,28 +24,23 @@ export default function NewProductPage() {
     currency: 'TRY',
     supplier_id: '',
     product_group_id: '',
-    supplier_list_price: '',
+    supplier_list_price: '',        // Bu alan dinamik: Net alış fiyatı veya Liste fiyatı olabilir
     supplier_discount_percentage: '',
-    price_multiplier: '1.00',
-    dealer_list_price: '',
+    price_multiplier: '1.80',       // Varsayılan çarpan
+    dealer_list_price: '',          // Bizim kataloğa koyacağımız fiyat
     specifications: '',
     image_url: '',
     is_published: false,
     is_active: true
   })
 
-  // Para birimi sembolleri
-  const currencySymbols = {
-    TRY: '₺',
-    USD: '$',
-    EUR: '€',
-    GBP: '£'
-  }
+  const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
 
   useEffect(() => {
     loadData()
   }, [])
 
+  // Fiyat verileri değiştikçe hesaplamayı tetikle
   useEffect(() => {
     calculatePrices()
   }, [
@@ -59,133 +54,97 @@ export default function NewProductPage() {
   async function loadData() {
     try {
       const user = await getCurrentUser()
-      
-      const { data: profileData } = await supabase
+      const { data: profile } = await supabase
         .from('user_profiles')
-        .select('*, companies(*)')
+        .select('company_id')
         .eq('id', user.id)
         .single()
 
-      // Tedarikçileri yükle
-      const { data: suppliersData } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('company_id', profileData.company_id)
-        .eq('is_active', true)
-        .order('name')
+      const [suppliersRes, groupsRes] = await Promise.all([
+        supabase.from('suppliers').select('*').eq('company_id', profile.company_id).eq('is_active', true).order('name'),
+        supabase.from('product_groups').select('*').eq('company_id', profile.company_id).eq('is_active', true).order('sort_order')
+      ])
       
-      setSuppliers(suppliersData || [])
-
-      // Ürün gruplarını yükle
-      const { data: groupsData } = await supabase
-        .from('product_groups')
-        .select('*')
-        .eq('company_id', profileData.company_id)
-        .eq('is_active', true)
-        .order('sort_order')
-      
-      setProductGroups(groupsData || [])
+      setSuppliers(suppliersRes.data || [])
+      setProductGroups(groupsRes.data || [])
     } catch (err) {
-      console.error('Error loading data:', err)
       setError('Veriler yüklenirken hata oluştu')
     }
   }
 
   function calculatePrices() {
     const supplier = suppliers.find(s => s.id === formData.supplier_id)
+    const rawPrice = parseFloat(formData.supplier_list_price) || 0
     
-    if (!supplier || !formData.supplier_list_price) return
+    if (!supplier) return
 
     let ourCost = 0
-    let dealerList = 0
+    let calculatedDealerList = 0
 
-    if (supplier.discount_type === 'percentage' && formData.supplier_discount_percentage) {
-      ourCost = parseFloat(formData.supplier_list_price) * (1 - parseFloat(formData.supplier_discount_percentage) / 100)
-    } else if (supplier.discount_type === 'net_price') {
-      ourCost = parseFloat(formData.supplier_list_price)
-      dealerList = ourCost * parseFloat(formData.price_multiplier)
-    }
-
-    // Basit bir mantık: Eğer net fiyat değilse %25 kar ile liste fiyatı belirle
+    // 1. Maliyet ve Liste Fiyatı Hesaplama (Tedarikçi Tipine Göre)
     if (supplier.discount_type === 'percentage') {
-      dealerList = ourCost * 1.25
+      // SENARYO B: Liste Fiyatı + İskonto
+      const discount = parseFloat(formData.supplier_discount_percentage) || 0
+      ourCost = rawPrice * (1 - discount / 100)
+      
+      // Bu senaryoda genelde Bayi Liste Fiyatı = Tedarikçi Liste Fiyatı olur
+      // Ama kullanıcı manuel değiştirmek isterse diye, eğer dealer_list_price boşsa veya otomatik moddaysak atama yapıyoruz
+      // Basitlik için: İlk girişte otomatik atıyoruz.
+      calculatedDealerList = rawPrice
+    } else {
+      // SENARYO A: Net Fiyat + Çarpan
+      const multiplier = parseFloat(formData.price_multiplier) || 1.0
+      ourCost = rawPrice // Net fiyat direkt maliyettir
+      calculatedDealerList = rawPrice * multiplier
     }
 
+    // State'i güncelle (Kullanıcı dealer_list_price'ı manuel ezmediyse otomatiği kullan)
+    // Not: Yeni ürün olduğu için her zaman hesaplananı öneriyoruz
     setFormData(prev => ({
       ...prev,
-      dealer_list_price: dealerList.toFixed(2)
+      dealer_list_price: calculatedDealerList.toFixed(2)
     }))
-  }
-
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
-    })
   }
 
   const handleSupplierChange = (e) => {
     const supplierId = e.target.value
     const supplier = suppliers.find(s => s.id === supplierId)
     
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       supplier_id: supplierId,
+      // Tedarikçi değişince varsayılan değerlerini getir
       supplier_discount_percentage: supplier?.discount_value || '',
-      price_multiplier: supplier?.price_multiplier || '1.00'
-    })
+      price_multiplier: supplier?.price_multiplier || '1.80'
+    }))
   }
 
-  // YENİ GÖRSEL YÜKLEME FONKSİYONU
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }))
+  }
+
   const handleImageUpload = async (e) => {
     try {
       const file = e.target.files[0]
       if (!file) return
-
-      // Dosya boyutu kontrolü (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Görsel boyutu 5MB\'dan küçük olmalıdır')
-        return
-      }
-
-      // Dosya tipi kontrolü
-      if (!file.type.startsWith('image/')) {
-        setError('Sadece görsel dosyaları yüklenebilir')
-        return
-      }
+      if (file.size > 5 * 1024 * 1024) { setError('Görsel max 5MB olmalı'); return }
 
       setUploading(true)
-      setError('')
-
-      // Benzersiz dosya adı oluştur
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      const filePath = `${fileName}`
+      
+      const { error: uploadError } = await supabase.storage.from('products').upload(fileName, file)
+      if (uploadError) throw uploadError
 
-      // Supabase Storage'a yükle
-      const { error: uploadError } = await supabase.storage
-        .from('products') // Bucket adı 'products' olmalı
-        .upload(filePath, file)
-
-      if (uploadError) {
-        throw uploadError
-      }
-
-      // Public URL al
-      const { data: { publicUrl } } = supabase.storage
-        .from('products')
-        .getPublicUrl(filePath)
-
+      const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName)
       setImagePreview(publicUrl)
-      setFormData(prev => ({
-        ...prev,
-        image_url: publicUrl
-      }))
-
+      setFormData(prev => ({ ...prev, image_url: publicUrl }))
     } catch (err) {
-      console.error('Upload error:', err)
-      setError('Görsel yüklenirken hata oluştu: ' + err.message)
+      setError('Görsel yükleme hatası: ' + err.message)
     } finally {
       setUploading(false)
     }
@@ -198,108 +157,82 @@ export default function NewProductPage() {
 
     try {
       const user = await getCurrentUser()
-      
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('company_id')
-        .eq('id', user.id)
-        .single()
+      const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      if (!profile?.company_id) {
-        throw new Error('Şirket bilgisi bulunamadı')
-      }
-
+      // Son bir hesaplama yap (Ekranda ne görünüyorsa backend'e doğru gitsin)
       const supplier = suppliers.find(s => s.id === formData.supplier_id)
       const group = productGroups.find(g => g.id === formData.product_group_id)
-
-      // Fiyat hesaplamaları
+      
+      const rawPrice = parseFloat(formData.supplier_list_price) || 0
       let ourCost = 0
-      let dealerList = parseFloat(formData.dealer_list_price)
-      let dealerDiscount = group?.dealer_discount_percentage || 0
-      let dealerNet = dealerList * (1 - dealerDiscount / 100)
-      let profitMargin = 0
-
+      
       if (supplier?.discount_type === 'percentage') {
-        ourCost = parseFloat(formData.supplier_list_price) * (1 - parseFloat(formData.supplier_discount_percentage || 0) / 100)
-      } else if (supplier?.discount_type === 'net_price') {
-        ourCost = parseFloat(formData.supplier_list_price)
+        ourCost = rawPrice * (1 - (parseFloat(formData.supplier_discount_percentage)||0) / 100)
+      } else {
+        ourCost = rawPrice
       }
 
-      if (ourCost > 0 && dealerNet > 0) {
-        profitMargin = ((dealerNet - ourCost) / dealerNet) * 100
-      }
+      const dealerList = parseFloat(formData.dealer_list_price) || 0
+      const dealerDiscount = group?.dealer_discount_percentage || 0
+      const dealerNet = dealerList * (1 - dealerDiscount / 100)
+      
+      // Kar marjı formülü: (Satış - Maliyet) / Satış
+      const profitMargin = dealerNet > 0 ? ((dealerNet - ourCost) / dealerNet) * 100 : 0
 
-      // Specifications JSON'a çevir
+      // Specs JSON
       let specs = {}
-      if (formData.specifications) {
-        try {
-          specs = JSON.parse(formData.specifications)
-        } catch {
-          specs = { description: formData.specifications }
-        }
-      }
+      try { specs = JSON.parse(formData.specifications || '{}') } catch { specs = { info: formData.specifications } }
 
-      const insertData = {
+      const { error: insertError } = await supabase.from('products').insert([{
         company_id: profile.company_id,
-        supplier_id: formData.supplier_id || null,
-        product_group_id: formData.product_group_id || null,
         product_code: formData.product_code,
         name: formData.name,
-        description: formData.description || null,
-        category: formData.category || null,
+        description: formData.description,
+        category: formData.category,
         unit: formData.unit,
         currency: formData.currency,
-        supplier_list_price: parseFloat(formData.supplier_list_price) || null,
-        supplier_discount_percentage: parseFloat(formData.supplier_discount_percentage) || null,
-        our_cost_price: ourCost || null,
-        dealer_list_price: dealerList || null,
+        supplier_id: formData.supplier_id,
+        product_group_id: formData.product_group_id,
+        supplier_list_price: rawPrice, // Bu hem liste hem net fiyat olabilir, bağlama göre değişir
+        supplier_discount_percentage: parseFloat(formData.supplier_discount_percentage),
+        price_multiplier: parseFloat(formData.price_multiplier), // Veritabanında bu alan yoksa eklemek gerekebilir veya settings'de tutulabilir. Şimdilik hesaplama için kullanıp, sonucu dealer_list_price'a yazıyoruz.
+        our_cost_price: ourCost,
+        dealer_list_price: dealerList,
         dealer_discount_percentage: dealerDiscount,
-        dealer_net_price: dealerNet || null,
-        profit_margin_percentage: profitMargin || null,
-        list_price: dealerList,
+        dealer_net_price: dealerNet,
+        profit_margin_percentage: profitMargin,
+        list_price: dealerList, // Yedek
         specifications: specs,
-        image_url: formData.image_url || null,
+        image_url: formData.image_url,
         is_published: formData.is_published,
         is_active: formData.is_active
-      }
-
-      const { data, error: insertError } = await supabase
-        .from('products')
-        .insert([insertData])
-        .select()
-        .single()
+      }])
 
       if (insertError) throw insertError
-
       router.push('/products')
-      router.refresh()
     } catch (err) {
-      console.error('Error creating product:', err)
-      setError(err.message || 'Ürün eklenirken bir hata oluştu')
+      setError('Kayıt hatası: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  // Hesaplama özeti değişkenleri
-  const supplier = suppliers.find(s => s.id === formData.supplier_id)
-  const group = productGroups.find(g => g.id === formData.product_group_id)
+  // UI Helper Variables
+  const selectedSupplier = suppliers.find(s => s.id === formData.supplier_id)
+  const selectedGroup = productGroups.find(g => g.id === formData.product_group_id)
   
-  let ourCost = 0
-  let dealerList = parseFloat(formData.dealer_list_price) || 0
-  let dealerDiscount = group?.dealer_discount_percentage || 0
-  let dealerNet = dealerList * (1 - dealerDiscount / 100)
-  let profitMargin = 0
-
-  if (supplier?.discount_type === 'percentage' && formData.supplier_discount_percentage) {
-    ourCost = parseFloat(formData.supplier_list_price || 0) * (1 - parseFloat(formData.supplier_discount_percentage) / 100)
-  } else if (supplier?.discount_type === 'net_price') {
-    ourCost = parseFloat(formData.supplier_list_price || 0)
+  // Anlık Hesaplama Gösterimi (UI İçin)
+  const rawPrice = parseFloat(formData.supplier_list_price) || 0
+  let uiOurCost = 0
+  if (selectedSupplier?.discount_type === 'percentage') {
+    uiOurCost = rawPrice * (1 - (parseFloat(formData.supplier_discount_percentage)||0) / 100)
+  } else {
+    uiOurCost = rawPrice
   }
-
-  if (ourCost > 0 && dealerNet > 0) {
-    profitMargin = ((dealerNet - ourCost) / dealerNet) * 100
-  }
+  const uiDealerList = parseFloat(formData.dealer_list_price) || 0
+  const uiDealerNet = uiDealerList * (1 - (selectedGroup?.dealer_discount_percentage || 0) / 100)
+  const uiProfit = uiDealerNet - uiOurCost
+  const uiMargin = uiDealerNet > 0 ? (uiProfit / uiDealerNet) * 100 : 0
 
   return (
     <DashboardLayout>
@@ -307,438 +240,239 @@ export default function NewProductPage() {
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900">Yeni Ürün Ekle</h1>
-            <p className="text-gray-600 mt-2">Ürün bilgilerini, görseli ve fiyatlandırma detaylarını girin</p>
+            <p className="text-gray-600 mt-1">Ürün detaylarını ve fiyatlandırma stratejisini belirleyin</p>
           </div>
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
+          {error && <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2"><AlertCircle className="w-5 h-5"/>{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Sol Kolon */}
+              
+              {/* SOL KOLON */}
               <div className="lg:col-span-2 space-y-6">
-                {/* Görsel Upload */}
+                {/* Görsel */}
                 <div className="card">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Ürün Görseli</h2>
+                  <h3 className="font-semibold mb-4">Görsel</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          disabled={uploading}
-                          className="hidden"
-                        />
-                        <div className={`border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          {uploading ? (
-                            <div className="flex flex-col items-center">
-                              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-3"></div>
-                              <p className="text-sm text-gray-600">Yükleniyor...</p>
-                            </div>
-                          ) : imagePreview ? (
-                            <img 
-                              src={imagePreview} 
-                              alt="Preview" 
-                              className="w-full h-48 object-cover rounded-lg mb-3"
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center">
-                              <Upload className="w-12 h-12 text-gray-400 mb-3" />
-                              <p className="text-sm text-gray-600 mb-1">Görsel Yükle</p>
-                              <p className="text-xs text-gray-500">PNG, JPG, WEBP (max 5MB)</p>
-                            </div>
-                          )}
-                        </div>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-center bg-gray-50 rounded-lg p-4">
-                      <div className="text-center">
-                        <ImagePlus className="w-16 h-16 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm text-gray-600">Görsel yüklendikten sonra</p>
-                        <p className="text-sm text-gray-600">bucket üzerinde saklanacak</p>
-                      </div>
+                    <label className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 cursor-pointer transition-colors">
+                      <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} className="hidden" />
+                      {uploading ? <span>Yükleniyor...</span> : imagePreview ? <img src={imagePreview} className="h-32 mx-auto object-contain"/> : <div className="text-gray-500"><Upload className="w-8 h-8 mx-auto mb-2"/>Görsel Seç</div>}
+                    </label>
+                    <div className="bg-blue-50 rounded-lg p-4 flex items-center justify-center text-sm text-blue-700">
+                      <ImagePlus className="w-5 h-5 mr-2"/> Katalogda görünecek ana görsel
                     </div>
                   </div>
                 </div>
 
                 {/* Temel Bilgiler */}
                 <div className="card">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Temel Bilgiler</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <h3 className="font-semibold mb-4">Ürün Bilgileri</h3>
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Ürün Kodu <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="product_code"
-                        value={formData.product_code}
-                        onChange={handleChange}
-                        required
-                        className="input-field"
-                        placeholder="TR-001"
-                      />
+                      <label className="block text-sm font-medium mb-1">Ürün Kodu *</label>
+                      <input name="product_code" value={formData.product_code} onChange={handleChange} className="input-field" required placeholder="Örn: DB-75" />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Kategori
-                      </label>
-                      <input
-                        type="text"
-                        name="category"
-                        value={formData.category}
-                        onChange={handleChange}
-                        className="input-field"
-                        placeholder="Levhalar, Bariyerler, vb."
-                      />
+                      <label className="block text-sm font-medium mb-1">Kategori</label>
+                      <input name="category" value={formData.category} onChange={handleChange} className="input-field" placeholder="Trafik Dubaları" />
                     </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Ürün Adı <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        required
-                        className="input-field"
-                        placeholder="Trafik Levhası A1"
-                      />
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium mb-1">Ürün Adı *</label>
+                      <input name="name" value={formData.name} onChange={handleChange} className="input-field" required placeholder="75 cm Esnek Duba" />
                     </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Açıklama
-                      </label>
-                      <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleChange}
-                        rows={3}
-                        className="input-field"
-                        placeholder="Ürün açıklaması..."
-                      />
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium mb-1">Açıklama</label>
+                      <textarea name="description" value={formData.description} onChange={handleChange} rows={2} className="input-field" />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Birim
-                      </label>
-                      <select
-                        name="unit"
-                        value={formData.unit}
-                        onChange={handleChange}
-                        className="input-field"
-                      >
-                        <option>Adet</option>
-                        <option>Metre</option>
-                        <option>Metrekare</option>
-                        <option>Kilogram</option>
-                        <option>Litre</option>
-                        <option>Kova</option>
-                        <option>Rulo</option>
-                        <option>Set</option>
+                      <label className="block text-sm font-medium mb-1">Birim</label>
+                      <select name="unit" value={formData.unit} onChange={handleChange} className="input-field">
+                        <option>Adet</option><option>Takım</option><option>Metre</option>
                       </select>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Para Birimi <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="currency"
-                        value={formData.currency}
-                        onChange={handleChange}
-                        className="input-field"
-                      >
-                        <option value="TRY">₺ Türk Lirası (TRY)</option>
-                        <option value="USD">$ ABD Doları (USD)</option>
-                        <option value="EUR">€ Euro (EUR)</option>
-                        <option value="GBP">£ İngiliz Sterlini (GBP)</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Teknik Özellikler (JSON)
-                      </label>
-                      <textarea
-                        name="specifications"
-                        value={formData.specifications}
-                        onChange={handleChange}
-                        rows={2}
-                        className="input-field font-mono text-sm"
-                        placeholder='{"renk": "Sarı", "malzeme": "Plastik", "boyut": "60x60cm"}'
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tedarikçi ve Grup */}
-                <div className="card">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tedarikçi ve Grup</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Tedarikçi <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="supplier_id"
-                        value={formData.supplier_id}
-                        onChange={handleSupplierChange}
-                        required
-                        className="input-field"
-                      >
-                        <option value="">Seçiniz...</option>
-                        {suppliers.map(supplier => (
-                          <option key={supplier.id} value={supplier.id}>
-                            {supplier.name} ({supplier.code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Ürün Grubu <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="product_group_id"
-                        value={formData.product_group_id}
-                        onChange={handleChange}
-                        required
-                        className="input-field"
-                      >
-                        <option value="">Seçiniz...</option>
-                        {productGroups.map(group => (
-                          <option key={group.id} value={group.id}>
-                            {group.name} (%{group.dealer_discount_percentage} iskonto)
-                          </option>
-                        ))}
+                      <label className="block text-sm font-medium mb-1">Para Birimi</label>
+                      <select name="currency" value={formData.currency} onChange={handleChange} className="input-field">
+                        <option value="TRY">₺ TRY</option><option value="USD">$ USD</option><option value="EUR">€ EUR</option>
                       </select>
                     </div>
                   </div>
                 </div>
 
-                {/* Fiyatlandırma */}
-                <div className="card">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Fiyatlandırma</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Fiyatlandırma Motoru */}
+                <div className="card border-l-4 border-l-blue-500">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <Calculator className="w-5 h-5 text-blue-600"/> Fiyatlandırma Stratejisi
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-6 mb-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Tedarikçi Liste Fiyatı <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                          {currencySymbols[formData.currency]}
+                      <label className="block text-sm font-medium mb-1">Tedarikçi *</label>
+                      <select name="supplier_id" value={formData.supplier_id} onChange={handleSupplierChange} required className="input-field">
+                        <option value="">Seçiniz...</option>
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.discount_type === 'percentage' ? 'İskontolu' : 'Net'})</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Ürün Grubu (Bayi İsk.) *</label>
+                      <select name="product_group_id" value={formData.product_group_id} onChange={handleChange} required className="input-field">
+                        <option value="">Seçiniz...</option>
+                        {productGroups.map(g => <option key={g.id} value={g.id}>{g.name} (%{g.dealer_discount_percentage})</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Dinamik Fiyat Alanları */}
+                  {selectedSupplier ? (
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {selectedSupplier.discount_type === 'percentage' ? '1. Tedarikçi Liste Fiyatı' : '1. Net Alış Fiyatı'}
                         </span>
-                        <input
-                          type="number"
-                          name="supplier_list_price"
-                          value={formData.supplier_list_price}
-                          onChange={handleChange}
-                          required
-                          min="0"
-                          step="0.01"
-                          className="input-field pl-8"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
-
-                    {supplier?.discount_type === 'percentage' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Tedarikçi İskontosu
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            name="supplier_discount_percentage"
-                            value={formData.supplier_discount_percentage}
-                            onChange={handleChange}
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            className="input-field pr-8"
+                        <div className="relative w-1/2">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{currencySymbols[formData.currency]}</span>
+                          <input 
+                            type="number" 
+                            name="supplier_list_price" 
+                            value={formData.supplier_list_price} 
+                            onChange={handleChange} 
+                            className="input-field pl-8 font-bold" 
                             placeholder="0.00"
                           />
-                          <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500">%</span>
                         </div>
                       </div>
-                    )}
 
-                    {supplier?.discount_type === 'net_price' && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Fiyat Çarpanı
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">x</span>
-                          <input
-                            type="number"
-                            name="price_multiplier"
-                            value={formData.price_multiplier}
-                            onChange={handleChange}
-                            min="1"
-                            step="0.01"
-                            className="input-field pl-8"
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          {selectedSupplier.discount_type === 'percentage' ? '2. Alış İskontosu (%)' : '2. Fiyat Çarpanı (x)'}
+                        </span>
+                        <div className="relative w-1/2">
+                          {selectedSupplier.discount_type === 'percentage' ? (
+                            <>
+                              <input 
+                                type="number" 
+                                name="supplier_discount_percentage" 
+                                value={formData.supplier_discount_percentage} 
+                                onChange={handleChange} 
+                                className="input-field pr-8" 
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">x</span>
+                              <input 
+                                type="number" 
+                                name="price_multiplier" 
+                                value={formData.price_multiplier} 
+                                onChange={handleChange} 
+                                className="input-field pl-8" 
+                                step="0.01"
+                              />
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-300 flex items-center justify-between">
+                        <div>
+                          <span className="text-sm font-medium text-gray-900">3. Bayi Liste Fiyatı (Katalog)</span>
+                          <p className="text-xs text-gray-500">Otomatik hesaplanır, düzenlenebilir.</p>
+                        </div>
+                        <div className="relative w-1/2">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{currencySymbols[formData.currency]}</span>
+                          <input 
+                            type="number" 
+                            name="dealer_list_price" 
+                            value={formData.dealer_list_price} 
+                            onChange={handleChange} 
+                            className="input-field pl-8 font-extrabold text-lg text-blue-600 border-blue-300" 
                           />
                         </div>
                       </div>
-                    )}
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Bayi Liste Fiyatı <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                          {currencySymbols[formData.currency]}
-                        </span>
-                        <input
-                          type="number"
-                          name="dealer_list_price"
-                          value={formData.dealer_list_price}
-                          onChange={handleChange}
-                          required
-                          min="0"
-                          step="0.01"
-                          className="input-field pl-8 text-lg font-semibold"
-                          placeholder="0.00"
-                        />
-                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                      Fiyatlandırma seçeneklerini görmek için bir tedarikçi seçin.
+                    </div>
+                  )}
                 </div>
 
-                {/* Yayın Ayarları */}
+                {/* Yayın */}
                 <div className="card">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Yayın Ayarları</h2>
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        name="is_active"
-                        checked={formData.is_active}
-                        onChange={handleChange}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900">Ürün aktif</span>
-                    </label>
-
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        name="is_published"
-                        checked={formData.is_published}
-                        onChange={handleChange}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1"
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">Bayi kataloğunda yayınla</span>
-                        <p className="text-xs text-gray-500 mt-1">
-                          ✅ Bu ürün bayi.fmtrafik.com'da görünecek
-                        </p>
-                      </div>
-                    </label>
+                  <h3 className="font-semibold mb-2">Durum</h3>
+                  <div className="flex gap-6">
+                    <label className="flex items-center gap-2"><input type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="rounded text-blue-600"/> Aktif</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" name="is_published" checked={formData.is_published} onChange={handleChange} className="rounded text-blue-600"/> Katalogda Yayınla</label>
                   </div>
                 </div>
               </div>
 
-              {/* Sağ Kolon - Fiyat Özeti */}
+              {/* SAĞ KOLON - ÖZET (STICKY) */}
               <div className="lg:col-span-1">
-                <div className="card sticky top-6 bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Calculator className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-semibold text-gray-900">Fiyat Özeti</h3>
-                  </div>
+                <div className="card sticky top-6 bg-white border-2 border-blue-100 shadow-lg">
+                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-green-600"/> Fiyat Analizi
+                  </h3>
 
-                  <div className="space-y-3">
-                    <div className="p-3 bg-white rounded-lg">
-                      <p className="text-xs text-gray-600 mb-1">Bizim Maliyet</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {currencySymbols[formData.currency]}{ourCost.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </p>
+                  <div className="space-y-4">
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <span className="text-xs text-gray-500 block mb-1">Bizim Maliyetimiz</span>
+                      <span className="text-xl font-bold text-gray-700">
+                        {currencySymbols[formData.currency]}{uiOurCost.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
 
-                    <div className="p-3 bg-white rounded-lg">
-                      <p className="text-xs text-gray-600 mb-1">Bayi Liste Fiyatı</p>
-                      <p className="text-xl font-bold text-blue-600">
-                        {currencySymbols[formData.currency]}{dealerList.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </p>
+                    <div className="flex items-center justify-center text-gray-400">
+                      <TrendingUp className="w-4 h-4" />
                     </div>
 
-                    {group && (
-                      <div className="p-3 bg-white rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">
-                          Bayi İskontosu ({group.code})
-                        </p>
-                        <p className="text-lg font-semibold text-red-600">
-                          %{dealerDiscount.toFixed(0)}
-                        </p>
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <span className="text-xs text-blue-600 block mb-1 font-semibold">Katalog Fiyatı (Bayi Liste)</span>
+                      <span className="text-xl font-bold text-blue-700">
+                        {currencySymbols[formData.currency]}{uiDealerList.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    {selectedGroup && (
+                      <div className="text-center text-sm text-red-500 font-medium">
+                        - %{selectedGroup.dealer_discount_percentage} Bayi İskontosu
                       </div>
                     )}
 
-                    <div className="p-3 bg-white rounded-lg border-2 border-green-300">
-                      <p className="text-xs text-gray-600 mb-1">Bayi Net Fiyatı</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {currencySymbols[formData.currency]}{dealerNet.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </p>
+                    <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                      <span className="text-xs text-green-600 block mb-1 font-semibold">Bayi Net Fiyatı (Satış)</span>
+                      <span className="text-2xl font-bold text-green-700">
+                        {currencySymbols[formData.currency]}{uiDealerNet.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
 
-                    {profitMargin > 0 && (
-                      <div className="p-3 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <TrendingUp className="w-4 h-4 text-purple-600" />
-                          <p className="text-xs text-gray-700 font-medium">Kar Marjı</p>
-                        </div>
-                        <p className="text-2xl font-bold text-purple-600">
-                          %{profitMargin.toFixed(1)}
-                        </p>
+                    <div className="pt-4 border-t border-gray-100">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-gray-600">Brüt Kar:</span>
+                        <span className="font-medium text-gray-900">{currencySymbols[formData.currency]}{uiProfit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                       </div>
-                    )}
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Kar Marjı:</span>
+                        <span className={`font-bold ${uiMargin < 10 ? 'text-red-600' : 'text-green-600'}`}>
+                          %{uiMargin.toFixed(1)}
+                        </span>
+                      </div>
+                      {uiMargin < 10 && uiMargin > 0 && (
+                        <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3"/> Kar marjı düşük!
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
+
             </div>
 
-            {/* Buttons */}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => router.push('/products')}
-                className="btn-secondary flex items-center gap-2"
-              >
-                <X className="w-5 h-5" />
-                İptal
-              </button>
-              <button
-                type="submit"
-                disabled={loading || uploading}
-                className="btn-primary flex items-center gap-2 disabled:opacity-50"
-              >
-                {loading || uploading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>{uploading ? 'Görsel Yükleniyor...' : 'Kaydediliyor...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    <span>Ürünü Kaydet</span>
-                  </>
-                )}
-              </button>
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => router.push('/products')} className="btn-secondary flex items-center gap-2"><X className="w-4 h-4"/> İptal</button>
+              <button type="submit" disabled={loading || uploading} className="btn-primary flex items-center gap-2">{loading ? 'Kaydediliyor...' : <><Save className="w-4 h-4"/> Ürünü Kaydet</>}</button>
             </div>
           </form>
         </div>
