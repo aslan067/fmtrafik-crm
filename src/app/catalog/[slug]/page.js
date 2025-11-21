@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Search, Filter, Package, Eye } from 'lucide-react'
+import { Search, Package, Eye, Grid3x3, List as ListIcon } from 'lucide-react'
 
 export default function CatalogPage() {
   const params = useParams()
@@ -16,7 +16,6 @@ export default function CatalogPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedGroup, setSelectedGroup] = useState('')
-  const [companyId, setCompanyId] = useState(null)
 
   useEffect(() => {
     loadCatalogData()
@@ -34,7 +33,6 @@ export default function CatalogPage() {
 
       if (settingsError) throw settingsError
       setSettings(catalogSettings)
-      setCompanyId(catalogSettings.companies.id)
 
       // Ürünleri yükle (sadece yayınlananlar)
       const { data: productsData, error: productsError } = await supabase
@@ -91,6 +89,8 @@ export default function CatalogPage() {
     
     return matchesSearch && matchesCategory && matchesGroup
   })
+
+  const isGridView = settings?.view_mode === 'grid' || !settings?.view_mode
 
   if (loading) {
     return (
@@ -151,28 +151,42 @@ export default function CatalogPage() {
           )}
         </div>
 
-        {/* Sonuç Sayısı */}
+        {/* Sonuç Sayısı ve Görünüm İkonu */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
             <span className="font-semibold">{filteredProducts.length}</span> ürün listeleniyor
           </p>
 
-          {(searchTerm || selectedCategory || selectedGroup) && (
-            <button
-              onClick={() => {
-                setSearchTerm('')
-                setSelectedCategory('')
-                setSelectedGroup('')
-              }}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              Filtreleri Temizle
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {(searchTerm || selectedCategory || selectedGroup) && (
+              <button
+                onClick={() => {
+                  setSearchTerm('')
+                  setSelectedCategory('')
+                  setSelectedGroup('')
+                }}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Filtreleri Temizle
+              </button>
+            )}
+
+            {/* Görünüm İkonu */}
+            <div className="flex items-center gap-2 text-gray-500">
+              {isGridView ? (
+                <Grid3x3 className="w-5 h-5" />
+              ) : (
+                <ListIcon className="w-5 h-5" />
+              )}
+              <span className="text-xs">
+                {isGridView ? 'Grid' : 'Liste'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Ürün Grid */}
+      {/* Ürün Listesi */}
       {filteredProducts.length === 0 ? (
         <div className="text-center py-12">
           <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -182,7 +196,8 @@ export default function CatalogPage() {
               : 'Henüz yayınlanmış ürün bulunmuyor'}
           </p>
         </div>
-      ) : (
+      ) : isGridView ? (
+        // GRID GÖRÜNÜM
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map(product => (
             <div 
@@ -233,42 +248,40 @@ export default function CatalogPage() {
                   <p className="text-xs text-gray-500 mb-3">{product.category}</p>
                 )}
 
-{/* Fiyatlar */}
-{(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
-  <div className="space-y-1 mb-3">
-    {/* Liste Fiyatı */}
-    {settings?.show_list_price && (
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-700">Liste Fiyatı:</span>
-        <span className="text-lg font-bold text-red-600">
-          {currencySymbols[product.currency || 'TRY']}
-          {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-        </span>
-      </div>
-    )}
+                {/* Fiyatlar */}
+                {(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
+                  <div className="space-y-1 mb-3">
+                    {settings?.show_list_price && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">Liste Fiyatı:</span>
+                        <span className="text-sm text-gray-600 line-through">
+                          {currencySymbols[product.currency || 'TRY']}
+                          {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
 
-    {/* İskonto */}
-    {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">İskonto:</span>
-        <span className="text-sm text-red-600 font-medium">
-          %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
-        </span>
-      </div>
-    )}
+                    {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">İskonto:</span>
+                        <span className="text-sm text-red-600 font-medium">
+                          %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+                        </span>
+                      </div>
+                    )}
 
-    {/* Net Fiyat */}
-    {settings?.show_net_price && (
-      <div className="flex items-center justify-between pt-2 border-t">
-        <span className="text-sm font-medium text-gray-700">Net Fiyat:</span>
-        <span className="text-lg font-bold text-green-600">
-          {currencySymbols[product.currency || 'TRY']}
-          {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-        </span>
-      </div>
-    )}
-  </div>
-)}
+                    {settings?.show_net_price && (
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <span className="text-sm font-medium text-gray-700">Net Fiyat:</span>
+                        <span className="text-lg font-bold text-green-600">
+                          {currencySymbols[product.currency || 'TRY']}
+                          {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Birim */}
                 <p className="text-xs text-gray-500 mb-3">Birim: {product.unit}</p>
 
@@ -277,6 +290,121 @@ export default function CatalogPage() {
                   <Eye className="w-4 h-4" />
                   Detayları Gör
                 </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        // LİSTE GÖRÜNÜM
+        <div className="space-y-4">
+          {filteredProducts.map(product => (
+            <div 
+              key={product.id}
+              onClick={() => router.push(`/catalog/${params.slug}/${product.id}`)}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
+            >
+              <div className="flex flex-col sm:flex-row">
+                {/* Ürün Görseli - Liste görünümde daha küçük */}
+                <div className="w-full sm:w-48 h-48 bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {product.image_url ? (
+                    <img 
+                      src={product.image_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                  ) : (
+                    <Package className="w-16 h-16 text-gray-300" />
+                  )}
+                </div>
+
+                {/* Ürün Bilgileri */}
+                <div className="flex-1 p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    {/* Sol Taraf - Ürün Bilgileri */}
+                    <div className="flex-1">
+                      {/* Grup Badge */}
+                      {product.product_groups && (
+                        <span 
+                          className="inline-block px-2 py-0.5 rounded text-xs font-medium mb-2"
+                          style={{ 
+                            backgroundColor: `${product.product_groups.color_code}20`,
+                            color: product.product_groups.color_code 
+                          }}
+                        >
+                          {product.product_groups.name}
+                        </span>
+                      )}
+
+                      {/* Ürün Kodu */}
+                      {settings?.show_product_codes && product.product_code && (
+                        <p className="text-xs text-gray-500 mb-1">{product.product_code}</p>
+                      )}
+
+                      {/* Ürün Adı */}
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
+                        {product.name}
+                      </h3>
+
+                      {/* Kategori */}
+                      {product.category && (
+                        <p className="text-sm text-gray-600 mb-2">{product.category}</p>
+                      )}
+
+                      {/* Açıklama (varsa ilk 150 karakter) */}
+                      {product.description && (
+                        <p className="text-sm text-gray-600 line-clamp-2">
+                          {product.description}
+                        </p>
+                      )}
+
+                      {/* Birim */}
+                      <p className="text-xs text-gray-500 mt-2">Birim: {product.unit}</p>
+                    </div>
+
+                    {/* Sağ Taraf - Fiyat ve Buton */}
+                    <div className="flex flex-col items-end gap-3 min-w-[200px]">
+                      {/* Fiyatlar */}
+                      {(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
+                        <div className="w-full space-y-2">
+                          {settings?.show_list_price && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-500">Liste:</span>
+                              <span className="text-sm text-gray-600 line-through">
+                                {currencySymbols[product.currency || 'TRY']}
+                                {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+
+                          {settings?.show_dealer_discount && product.dealer_discount_percentage > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-500">İskonto:</span>
+                              <span className="text-sm text-red-600 font-medium">
+                                %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+                              </span>
+                            </div>
+                          )}
+
+                          {settings?.show_net_price && (
+                            <div className="flex items-center justify-between pt-2 border-t">
+                              <span className="text-sm font-medium text-gray-700">Net:</span>
+                              <span className="text-2xl font-bold text-green-600">
+                                {currencySymbols[product.currency || 'TRY']}
+                                {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Detay Butonu */}
+                      <button className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium">
+                        <Eye className="w-4 h-4" />
+                        Detayları Gör
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
