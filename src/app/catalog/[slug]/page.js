@@ -313,28 +313,77 @@ export default function CatalogPage() {
           ))}
         </div>
       ) : (
-        // LİSTE GÖRÜNÜM
-        <div className="space-y-4">
+        // --- MODERN LİSTE GÖRÜNÜMÜ (YENİ) ---
+        <div className="flex flex-col gap-3">
           {filteredProducts.map(product => (
             <div 
               key={product.id}
               onClick={() => router.push(`/catalog/${params.slug}/${product.id}`)}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
+              className="bg-white rounded-lg border border-gray-200 p-4 flex flex-col sm:flex-row items-center gap-6 hover:shadow-md transition-all cursor-pointer group"
             >
-              <div className="flex flex-col sm:flex-row">
-                {/* Ürün Görseli */}
-                <div className="w-full sm:w-48 h-48 bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
-                  {product.image_url ? (
-                    <img 
-                      src={product.image_url}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <Package className="w-16 h-16 text-gray-300" />
+              {/* 1. Görsel (Sabit Boyut) */}
+              <div className="w-24 h-24 bg-gray-50 rounded-lg flex-shrink-0 flex items-center justify-center border border-gray-100">
+                {product.image_url ? (
+                  <img src={product.image_url} alt={product.name} className="w-full h-full object-contain p-1" />
+                ) : (
+                  <Package className="w-8 h-8 text-gray-300" />
+                )}
+              </div>
+
+              {/* 2. Ana Bilgiler (Kod, İsim, Teknik Özellikler) */}
+              <div className="flex-1 text-center sm:text-left w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
+                  <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600 inline-block w-fit mx-auto sm:mx-0">
+                    {product.product_code}
+                  </span>
+                  {product.product_groups && (
+                    <span className="text-xs px-2 py-0.5 rounded font-medium w-fit mx-auto sm:mx-0" style={getGroupBadgeStyle(product.product_groups)}>
+                      {product.product_groups.name}
+                    </span>
                   )}
                 </div>
+                
+                <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 mb-2">
+                  {product.name}
+                </h3>
 
+                {/* Teknik Özellikler (Chips şeklinde) */}
+                {product.specifications && (
+                  <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                    {Object.entries(product.specifications).slice(0, 3).map(([key, value]) => (
+                      <span key={key} className="text-xs text-gray-500 border border-gray-200 px-2 py-0.5 rounded-full bg-gray-50">
+                        <span className="font-medium text-gray-700 capitalize">{key}:</span> {value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Fiyat ve Aksiyon */}
+              <div className="flex flex-col items-center sm:items-end gap-1 min-w-[140px]">
+                {settings?.show_list_price && (
+                   <span className="text-sm text-gray-400 line-through decoration-red-400">
+                     {getCurrencySymbol(product.currency)}
+                     {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                   </span>
+                )}
+                {settings?.show_net_price && (
+                  <span className="text-2xl font-bold text-gray-900">
+                    {getCurrencySymbol(product.currency)}
+                    {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 flex items-center gap-1 mt-1 group-hover:text-blue-600">
+                  Detay <ChevronRight className="w-3 h-3" />
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
                 {/* Ürün Bilgileri */}
                 <div className="flex-1 p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
