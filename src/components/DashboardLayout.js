@@ -5,7 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { 
   Menu, X, Bell, LogOut, Home, Users, FileText, 
-  ShoppingCart, DollarSign, BarChart3, Settings 
+  ShoppingCart, DollarSign, BarChart3, Settings,
+  Truck, Layers // Yeni ikonlar eklendi
 } from 'lucide-react'
 
 export default function DashboardLayout({ children }) {
@@ -34,6 +35,8 @@ export default function DashboardLayout({ children }) {
     { id: 'quotes', path: '/quotes', icon: FileText, label: 'Teklifler' },
     { id: 'sales', path: '/sales', icon: DollarSign, label: 'Satışlar' },
     { id: 'products', path: '/products', icon: ShoppingCart, label: 'Ürünler' },
+    { id: 'product-groups', path: '/product-groups', icon: Layers, label: 'Ürün Grupları' }, // Yeni
+    { id: 'suppliers', path: '/suppliers', icon: Truck, label: 'Tedarikçiler' }, // Yeni
     { id: 'reports', path: '/reports', icon: BarChart3, label: 'Raporlar' },
     { id: 'settings', path: '/settings', icon: Settings, label: 'Ayarlar' },
   ]
@@ -66,7 +69,7 @@ export default function DashboardLayout({ children }) {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {menuItems.map(item => (
             <button
               key={item.id}
@@ -79,7 +82,7 @@ export default function DashboardLayout({ children }) {
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />
               {sidebarOpen && (
-                <span className="flex-1 text-left font-medium">{item.label}</span>
+                <span className="flex-1 text-left font-medium text-sm">{item.label}</span>
               )}
             </button>
           ))}
@@ -95,7 +98,7 @@ export default function DashboardLayout({ children }) {
                 <p className="text-sm font-medium text-gray-900 truncate">{user?.email}</p>
                 <button 
                   onClick={handleSignOut}
-                  className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"
+                  className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 mt-1"
                 >
                   <LogOut className="w-3 h-3" />
                   Çıkış
