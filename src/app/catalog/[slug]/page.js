@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Search, Package, Eye, Grid3x3, List as ListIcon } from 'lucide-react'
+import { Search, Package, Eye, LayoutGrid, List as ListIcon } from 'lucide-react'
 
 export default function CatalogPage() {
   const params = useParams()
@@ -51,15 +51,21 @@ export default function CatalogPage() {
       setProducts(productsData || [])
 
       // Kategorileri çıkar
-      const uniqueCategories = [...new Set(productsData.map(p => p.category).filter(Boolean))]
+      const uniqueCategories = [...new Set((productsData || []).map(p => p.category).filter(Boolean))]
       setCategories(uniqueCategories)
 
       // Grupları çıkar
-      const uniqueGroups = [...new Map(
-        productsData
-          .filter(p => p.product_groups)
-          .map(p => [p.product_groups.code, p.product_groups])
-      ).values()]
+      const uniqueGroups = []
+      const groupCodes = new Set()
+      
+      if (productsData) {
+        productsData.forEach(p => {
+          if (p.product_groups && !groupCodes.has(p.product_groups.code)) {
+            groupCodes.add(p.product_groups.code)
+            uniqueGroups.push(p.product_groups)
+          }
+        })
+      }
       setGroups(uniqueGroups)
 
     } catch (error) {
@@ -77,10 +83,14 @@ export default function CatalogPage() {
     GBP: '£'
   }
 
+  const getCurrencySymbol = (currencyCode) => {
+    return currencySymbols[currencyCode || 'TRY'] || '₺'
+  }
+
   // Filtreleme
   const filteredProducts = products.filter(product => {
     const matchesSearch = 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.product_code && product.product_code.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))
     
@@ -91,6 +101,17 @@ export default function CatalogPage() {
   })
 
   const isGridView = settings?.view_mode === 'grid' || !settings?.view_mode
+
+  // Güvenli stil oluşturucu (Hata kaynağını önlemek için)
+  const getGroupBadgeStyle = (group) => {
+    if (!group || !group.color_code) {
+      return { backgroundColor: '#e5e7eb', color: '#374151' } // Varsayılan gri
+    }
+    return { 
+      backgroundColor: `${group.color_code}20`, // %20 opacity
+      color: group.color_code 
+    }
+  }
 
   if (loading) {
     return (
@@ -174,7 +195,7 @@ export default function CatalogPage() {
             {/* Görünüm İkonu */}
             <div className="flex items-center gap-2 text-gray-500">
               {isGridView ? (
-                <Grid3x3 className="w-5 h-5" />
+                <LayoutGrid className="w-5 h-5" />
               ) : (
                 <ListIcon className="w-5 h-5" />
               )}
@@ -197,7 +218,7 @@ export default function CatalogPage() {
           </p>
         </div>
       ) : isGridView ? (
-        // GRID GÖRÜNÜM
+        // GRID GÖRÜNÜM (GÜVENLİ VERSİYON)
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProducts.map(product => (
             <div 
@@ -224,12 +245,9 @@ export default function CatalogPage() {
                 {product.product_groups && (
                   <span 
                     className="inline-block px-2 py-0.5 rounded text-xs font-medium mb-2"
-                    style={{ 
-                      backgroundColor: `${product.product_groups.color_code}20`,
-                      color: product.product_groups.color_code 
-                    }}
+                    style={getGroupBadgeStyle(product.product_groups)}
                   >
-                    {product.product_groups.name}
+                    {product.product_groups.name || 'Grup'}
                   </span>
                 )}
 
@@ -255,7 +273,7 @@ export default function CatalogPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">Liste Fiyatı:</span>
                         <span className="text-sm text-gray-600 line-through">
-                          {currencySymbols[product.currency || 'TRY']}
+                          {getCurrencySymbol(product.currency)}
                           {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
@@ -265,7 +283,7 @@ export default function CatalogPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">İskonto:</span>
                         <span className="text-sm text-red-600 font-medium">
-                          %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+                          %{parseFloat(product.dealer_discount_percentage || 0).toFixed(0)}
                         </span>
                       </div>
                     )}
@@ -274,7 +292,7 @@ export default function CatalogPage() {
                       <div className="flex items-center justify-between pt-2 border-t">
                         <span className="text-sm font-medium text-gray-700">Net Fiyat:</span>
                         <span className="text-lg font-bold text-green-600">
-                          {currencySymbols[product.currency || 'TRY']}
+                          {getCurrencySymbol(product.currency)}
                           {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
@@ -304,7 +322,7 @@ export default function CatalogPage() {
               className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
             >
               <div className="flex flex-col sm:flex-row">
-                {/* Ürün Görseli - Liste görünümde daha küçük */}
+                {/* Ürün Görseli */}
                 <div className="w-full sm:w-48 h-48 bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {product.image_url ? (
                     <img 
@@ -320,57 +338,45 @@ export default function CatalogPage() {
                 {/* Ürün Bilgileri */}
                 <div className="flex-1 p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    {/* Sol Taraf - Ürün Bilgileri */}
                     <div className="flex-1">
-                      {/* Grup Badge */}
                       {product.product_groups && (
                         <span 
                           className="inline-block px-2 py-0.5 rounded text-xs font-medium mb-2"
-                          style={{ 
-                            backgroundColor: `${product.product_groups.color_code}20`,
-                            color: product.product_groups.color_code 
-                          }}
+                          style={getGroupBadgeStyle(product.product_groups)}
                         >
-                          {product.product_groups.name}
+                          {product.product_groups.name || 'Grup'}
                         </span>
                       )}
 
-                      {/* Ürün Kodu */}
                       {settings?.show_product_codes && product.product_code && (
                         <p className="text-xs text-gray-500 mb-1">{product.product_code}</p>
                       )}
 
-                      {/* Ürün Adı */}
                       <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
                         {product.name}
                       </h3>
 
-                      {/* Kategori */}
                       {product.category && (
                         <p className="text-sm text-gray-600 mb-2">{product.category}</p>
                       )}
 
-                      {/* Açıklama (varsa ilk 150 karakter) */}
                       {product.description && (
                         <p className="text-sm text-gray-600 line-clamp-2">
                           {product.description}
                         </p>
                       )}
 
-                      {/* Birim */}
                       <p className="text-xs text-gray-500 mt-2">Birim: {product.unit}</p>
                     </div>
 
-                    {/* Sağ Taraf - Fiyat ve Buton */}
                     <div className="flex flex-col items-end gap-3 min-w-[200px]">
-                      {/* Fiyatlar */}
                       {(settings?.show_list_price || settings?.show_net_price || settings?.show_dealer_discount) && (
                         <div className="w-full space-y-2">
                           {settings?.show_list_price && (
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-gray-500">Liste:</span>
                               <span className="text-sm text-gray-600 line-through">
-                                {currencySymbols[product.currency || 'TRY']}
+                                {getCurrencySymbol(product.currency)}
                                 {parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                               </span>
                             </div>
@@ -380,7 +386,7 @@ export default function CatalogPage() {
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-gray-500">İskonto:</span>
                               <span className="text-sm text-red-600 font-medium">
-                                %{parseFloat(product.dealer_discount_percentage).toFixed(0)}
+                                %{parseFloat(product.dealer_discount_percentage || 0).toFixed(0)}
                               </span>
                             </div>
                           )}
@@ -389,7 +395,7 @@ export default function CatalogPage() {
                             <div className="flex items-center justify-between pt-2 border-t">
                               <span className="text-sm font-medium text-gray-700">Net:</span>
                               <span className="text-2xl font-bold text-green-600">
-                                {currencySymbols[product.currency || 'TRY']}
+                                {getCurrencySymbol(product.currency)}
                                 {parseFloat(product.dealer_net_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                               </span>
                             </div>
@@ -397,7 +403,6 @@ export default function CatalogPage() {
                         </div>
                       )}
 
-                      {/* Detay Butonu */}
                       <button className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium">
                         <Eye className="w-4 h-4" />
                         Detayları Gör
