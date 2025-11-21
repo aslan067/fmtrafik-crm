@@ -21,7 +21,7 @@ export default function NewQuotePage() {
   const [customers, setCustomers] = useState([])
   const [products, setProducts] = useState([])
   const [bankAccounts, setBankAccounts] = useState([])
-  const [companyTerms, setCompanyTerms] = useState({ tr: '', en: '' }) // Şartlar için state
+  const [companyTerms, setCompanyTerms] = useState({ tr: '', en: '' }) // Şartlar state'i
   
   // Form State
   const [formData, setFormData] = useState({
@@ -34,7 +34,7 @@ export default function NewQuotePage() {
     bank_account_id: '',
     show_product_images: true,
     notes: '',
-    terms: '', // Otomatik dolacak
+    terms: '', 
     tax_rate: 20,
     discount_percentage: 0
   })
@@ -58,7 +58,7 @@ export default function NewQuotePage() {
     setFormData(prev => ({ ...prev, valid_until: date.toISOString().split('T')[0] }))
   }, [])
 
-  // Şablon değiştiğinde şartları otomatik güncelle
+  // Şablon değişince şartları güncelle
   useEffect(() => {
     if (formData.template_code === 'standard_tr') {
       setFormData(prev => ({ ...prev, terms: companyTerms.tr }))
@@ -67,7 +67,7 @@ export default function NewQuotePage() {
     }
   }, [formData.template_code, companyTerms])
 
-  // Kur veya Para Birimi değişirse fiyatları yeniden hesapla
+  // Kur/Para Birimi değişince hesapla
   useEffect(() => {
     if (items.length > 0 && items[0].product_id) {
       recalculateAllItems()
@@ -79,7 +79,6 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // Tüm gerekli verileri paralel çek
       const [custRes, prodRes, bankRes, compRes] = await Promise.all([
         supabase.from('customers').select('*').eq('company_id', profile.company_id).eq('status', 'active').order('name'),
         supabase.from('products').select('*, product_groups(dealer_discount_percentage)').eq('company_id', profile.company_id).eq('is_active', true).order('name'),
@@ -91,15 +90,15 @@ export default function NewQuotePage() {
       setProducts(prodRes.data || [])
       setBankAccounts(bankRes.data || [])
 
-      // Şirket şartlarını kaydet
+      // Şartları State'e kaydet
       const trTerms = compRes.data?.default_terms_tr || compRes.data?.default_quote_terms || ''
       const enTerms = compRes.data?.default_terms_en || ''
       setCompanyTerms({ tr: trTerms, en: enTerms })
       
-      // İlk açılışta Türkçe şartları form'a ata
+      // İlk açılışta Türkçe şartları ata
       setFormData(prev => ({ ...prev, terms: trTerms }))
 
-      // Varsayılan banka seçimi
+      // Varsayılan banka
       const defaultBank = bankRes.data?.find(b => b.currency === 'TRY') || bankRes.data?.[0]
       if (defaultBank) setFormData(prev => ({ ...prev, bank_account_id: defaultBank.id }))
 
@@ -109,7 +108,7 @@ export default function NewQuotePage() {
     }
   }
 
-  // --- Fiyat Dönüştürme Mantığı ---
+  // --- Fiyat Çevirici ---
   const convertPrice = (price, fromCurrency, toCurrency, rate) => {
     if (!price) return 0
     if (fromCurrency === toCurrency) return price
@@ -118,7 +117,6 @@ export default function NewQuotePage() {
     if (fromCurrency !== 'TRY' && toCurrency === 'TRY') return price * exchangeRate
     if (fromCurrency === 'TRY' && toCurrency !== 'TRY') return price / exchangeRate
     
-    // Çapraz kur (USD -> EUR vb.) için şimdilik birebir bırakıyoruz veya manuel kur girilmeli
     return price 
   }
 
@@ -126,7 +124,6 @@ export default function NewQuotePage() {
     const newItems = items.map(item => {
       if (!item.product_id) return item
 
-      // Orijinal (DB'deki) fiyatı baz alarak çevir
       const convertedListPrice = convertPrice(
         item.original_list_price || 0, 
         item.original_currency || 'TRY', 
@@ -163,18 +160,15 @@ export default function NewQuotePage() {
       const product = products.find(p => p.id === value)
       if (product) {
         item.description = product.name
-        // Orijinal verileri sakla (Kur değişince buradan hesaplayacağız)
         item.original_currency = product.currency || 'TRY'
         item.original_list_price = parseFloat(product.dealer_list_price)
         item.original_cost_price = parseFloat(product.our_cost_price)
         
-        // Mevcut kura göre hesapla
         item.list_price = convertPrice(item.original_list_price, item.original_currency, formData.currency, formData.exchange_rate)
         item.cost_price = convertPrice(item.original_cost_price, item.original_currency, formData.currency, formData.exchange_rate)
       }
     }
 
-    // Satır Toplamları
     const listPrice = parseFloat(item.list_price) || 0
     const quantity = parseFloat(item.quantity) || 0
     const discount = parseFloat(item.discount_percentage) || 0
@@ -214,27 +208,11 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // --- NUMARA ÜRETME (DÜZELTİLMİŞ) ---
-      const year = new Date().getFullYear()
-      
-      // .single() yerine .limit(1) kullanıyoruz, böylece kayıt yoksa hata vermez, boş dizi döner
-      const { data: lastQuotes, error: lastQuoteError } = await supabase
-        .from('quotes')
-        .select('quote_number')
-        .eq('company_id', profile.company_id)
-        .like('quote_number', `${year}-%`)
-        .order('quote_number', { ascending: false })
-        .limit(1)
+      // --- NUMARA ÜRETME (GÜVENLİ RPC ÇAĞRISI) ---
+      const { data: quoteNumber, error: rpcError } = await supabase
+        .rpc('get_next_quote_number', { p_company_id: profile.company_id })
 
-      if (lastQuoteError) throw lastQuoteError
-
-      let nextNum = 1
-      if (lastQuotes && lastQuotes.length > 0) {
-        // En son numarayı bul ve artır
-        const lastNumStr = lastQuotes[0].quote_number.split('-')[1]
-        nextNum = parseInt(lastNumStr) + 1
-      }
-      const quoteNumber = `${year}-${String(nextNum).padStart(4, '0')}`
+      if (rpcError) throw rpcError
 
       // Kayıt
       const { data: quote, error: quoteError } = await supabase
@@ -242,7 +220,7 @@ export default function NewQuotePage() {
         .insert([{
           company_id: profile.company_id,
           customer_id: formData.customer_id,
-          quote_number: quoteNumber,
+          quote_number: quoteNumber, // RPC'den gelen benzersiz numara
           title: formData.title || `Teklif #${quoteNumber}`,
           status: 'draft',
           template_code: formData.template_code,
@@ -323,8 +301,9 @@ export default function NewQuotePage() {
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-12 gap-6">
             
-            {/* SOL KOLON */}
+            {/* SOL KOLON - 3/12 */}
             <div className="xl:col-span-3 space-y-6">
+              
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
