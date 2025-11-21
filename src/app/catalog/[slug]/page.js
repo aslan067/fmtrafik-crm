@@ -41,7 +41,7 @@ export default function CatalogPage() {
           *,
           product_groups(code, name, color_code, dealer_discount_percentage)
         `)
-        .eq('company_id', catalogSettings.companies.id)
+        .eq('company_id', catalogSettings.company_id)
         .eq('is_published', true)
         .eq('is_active', true)
         .order('category')
