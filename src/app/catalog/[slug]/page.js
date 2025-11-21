@@ -1,6 +1,4 @@
 'use client'
-// Dynamic route olduğunu belirt
-export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
