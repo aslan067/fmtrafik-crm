@@ -1,4 +1,6 @@
 'use client'
+// Dynamic route olduğunu belirt
+export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
