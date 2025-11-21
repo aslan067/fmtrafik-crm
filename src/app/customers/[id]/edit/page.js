@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
-import { Save, X, AlertCircle, Trash2 } from 'lucide-react'
+import { Save, X, UserPlus, Trash2, AlertCircle, User } from 'lucide-react'
 
 export default function EditCustomerPage() {
   const router = useRouter()
@@ -14,69 +14,73 @@ export default function EditCustomerPage() {
   const [error, setError] = useState('')
   
   const [formData, setFormData] = useState({
-    name: '',
-    tax_office: '',
-    tax_number: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    country: 'Türkiye',
-    notes: '',
-    status: 'active'
+    name: '', tax_office: '', tax_number: '', email: '',
+    phone: '', address: '', city: '', country: 'Türkiye',
+    notes: '', status: 'active'
   })
 
+  const [contacts, setContacts] = useState([])
+
   useEffect(() => {
-    loadCustomer()
+    loadData()
   }, [])
 
-  async function loadCustomer() {
+  async function loadData() {
     try {
       const user = await getCurrentUser()
-      
-      // 1. Kullanıcı kontrolü
-      if (!user) {
-        router.push('/login')
-        return
-      }
+      const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // 2. Şirket bilgisini çek (Güvenlik ve tutarlılık için)
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('company_id')
-        .eq('id', user.id)
-        .single()
-
-      if (profileError) throw new Error(`Profil hatası: ${profileError.message}`)
-      if (!profile?.company_id) throw new Error('Şirket bilgisi bulunamadı.')
-
-      // 3. Müşteriyi çek (Şirket ID kontrolü ile)
+      // 1. Müşteri
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .select('*')
         .eq('id', params.id)
-        .eq('company_id', profile.company_id) // Çifte doğrulama
+        .eq('company_id', profile.company_id)
         .single()
 
-      if (customerError) throw new Error(`Müşteri yükleme hatası: ${customerError.message}`)
-      
+      if (customerError) throw customerError
       setFormData(customer)
 
+      // 2. Kontakları Çek
+      const { data: contactsData } = await supabase
+        .from('customer_contacts')
+        .select('*')
+        .eq('customer_id', params.id)
+      
+      if (contactsData && contactsData.length > 0) {
+        setContacts(contactsData)
+      } else {
+        setContacts([{ name: '', role: '', email: '', phone: '' }]) // Boş bir satır
+      }
+
     } catch (err) {
-      console.error('Load error:', err)
-      // Hatayı string'e çevirerek ekrana bas
-      setError(err.message || 'Bir hata oluştu')
+      setError('Veri yükleme hatası: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
+  const handleContactChange = (index, field, value) => {
+    const newContacts = [...contacts]
+    newContacts[index][field] = value
+    setContacts(newContacts)
+  }
+
+  const addContact = () => {
+    setContacts([...contacts, { name: '', role: '', email: '', phone: '' }])
+  }
+
+  const removeContact = async (index) => {
+    const contact = contacts[index]
+    
+    // Eğer veritabanında kayıtlı bir kontak ise, DB'den sil
+    if (contact.id) {
+      if (!confirm('Bu kişiyi silmek istediğinize emin misiniz?')) return
+      await supabase.from('customer_contacts').delete().eq('id', contact.id)
+    }
+    
+    // UI'dan sil
+    setContacts(contacts.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e) => {
@@ -85,245 +89,111 @@ export default function EditCustomerPage() {
     setError('')
 
     try {
+      // 1. Müşteri Güncelle
       const { error: updateError } = await supabase
         .from('customers')
-        .update({
-          name: formData.name,
-          tax_office: formData.tax_office,
-          tax_number: formData.tax_number,
-          email: formData.email,
-          phone: formData.phone,
-          address: formData.address,
-          city: formData.city,
-          country: formData.country,
-          notes: formData.notes,
-          status: formData.status,
-          updated_at: new Date().toISOString()
-        })
+        .update({ ...formData, updated_at: new Date().toISOString() })
         .eq('id', params.id)
 
       if (updateError) throw updateError
 
+      // 2. Kontakları Güncelle/Ekle
+      // ID'si olanları güncelle, olmayanları ekle
+      for (const contact of contacts) {
+        if (!contact.name) continue // İsmi boş olanı atla
+
+        const contactData = {
+          customer_id: params.id,
+          name: contact.name,
+          role: contact.role,
+          email: contact.email,
+          phone: contact.phone
+        }
+
+        if (contact.id) {
+          // Güncelle
+          await supabase.from('customer_contacts').update(contactData).eq('id', contact.id)
+        } else {
+          // Ekle
+          await supabase.from('customer_contacts').insert(contactData)
+        }
+      }
+
       router.push('/customers')
       router.refresh()
     } catch (err) {
-      console.error('Update error:', err)
-      setError(err.message || 'Güncelleme sırasında bir hata oluştu')
+      setError('Güncelleme hatası: ' + err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async () => {
-    if (!window.confirm('Bu müşteriyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) return
-
-    setSaving(true)
-    try {
-      const { error: deleteError } = await supabase
-        .from('customers')
-        .delete()
-        .eq('id', params.id)
-
-      if (deleteError) throw deleteError
-
-      router.push('/customers')
-      router.refresh()
-    } catch (err) {
-      setError('Silme hatası: ' + err.message)
-      setSaving(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex justify-center items-center h-full">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  if (loading) return <DashboardLayout><div className="p-6">Yükleniyor...</div></DashboardLayout>
 
   return (
     <DashboardLayout>
-      <div className="p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Müşteriyi Düzenle</h1>
-              <p className="text-gray-600 mt-1">Müşteri bilgilerini güncelleyin</p>
-            </div>
-            <button 
-              onClick={handleDelete}
-              className="text-red-600 hover:text-red-800 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors"
-              type="button"
-            >
-              <Trash2 className="w-5 h-5" />
-              Müşteriyi Sil
-            </button>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-800 font-medium">{error}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Temel Bilgiler */}
-            <div className="card">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Temel Bilgiler</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Şirket Adı <span className="text-red-500">*</span></label>
-                  <input 
-                    type="text" 
-                    name="name" 
-                    value={formData.name} 
-                    onChange={handleChange} 
-                    required 
-                    className="input-field" 
-                  />
+      <div className="p-6 max-w-5xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6">Müşteriyi Düzenle</h1>
+        {error && <div className="bg-red-50 p-4 mb-4 text-red-700 rounded flex gap-2"><AlertCircle className="w-5 h-5"/>{error}</div>}
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Firma ve Adres Bilgileri (Yeni Ekle ile aynı yapı) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="card space-y-4">
+                <h2 className="font-semibold text-lg">Firma Bilgileri</h2>
+                <div><label className="text-sm font-medium block mb-1">Firma Adı *</label><input name="name" value={formData.name} onChange={(e)=>setFormData({...formData, name:e.target.value})} required className="input-field" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="text-sm font-medium block mb-1">Vergi Dairesi</label><input name="tax_office" value={formData.tax_office} onChange={(e)=>setFormData({...formData, tax_office:e.target.value})} className="input-field" /></div>
+                  <div><label className="text-sm font-medium block mb-1">Vergi No</label><input name="tax_number" value={formData.tax_number} onChange={(e)=>setFormData({...formData, tax_number:e.target.value})} className="input-field" /></div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Vergi Dairesi</label>
-                  <input 
-                    type="text" 
-                    name="tax_office" 
-                    value={formData.tax_office || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Vergi Numarası</label>
-                  <input 
-                    type="text" 
-                    name="tax_number" 
-                    value={formData.tax_number || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="text-sm font-medium block mb-1">Genel Telefon</label><input name="phone" value={formData.phone} onChange={(e)=>setFormData({...formData, phone:e.target.value})} className="input-field" /></div>
+                  <div><label className="text-sm font-medium block mb-1">Genel Email</label><input name="email" value={formData.email} onChange={(e)=>setFormData({...formData, email:e.target.value})} className="input-field" /></div>
                 </div>
               </div>
-            </div>
 
-            {/* İletişim Bilgileri */}
-            <div className="card">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">İletişim Bilgileri</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <input 
-                    type="email" 
-                    name="email" 
-                    value={formData.email || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
+              <div className="card space-y-4">
+                <h2 className="font-semibold text-lg">Adres & Durum</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="text-sm font-medium block mb-1">Şehir</label><input name="city" value={formData.city} onChange={(e)=>setFormData({...formData, city:e.target.value})} className="input-field" /></div>
+                  <div><label className="text-sm font-medium block mb-1">Ülke</label><input name="country" value={formData.country} onChange={(e)=>setFormData({...formData, country:e.target.value})} className="input-field" /></div>
                 </div>
+                <div><label className="text-sm font-medium block mb-1">Açık Adres</label><textarea name="address" value={formData.address} onChange={(e)=>setFormData({...formData, address:e.target.value})} rows={3} className="input-field" /></div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Telefon</label>
-                  <input 
-                    type="tel" 
-                    name="phone" 
-                    value={formData.phone || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Şehir</label>
-                  <input 
-                    type="text" 
-                    name="city" 
-                    value={formData.city || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Ülke</label>
-                  <input 
-                    type="text" 
-                    name="country" 
-                    value={formData.country || ''} 
-                    onChange={handleChange} 
-                    className="input-field" 
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Adres</label>
-                  <textarea 
-                    name="address" 
-                    value={formData.address || ''} 
-                    onChange={handleChange} 
-                    rows={3} 
-                    className="input-field" 
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Ek Bilgiler */}
-            <div className="card">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Ek Bilgiler</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Durum</label>
-                  <select 
-                    name="status" 
-                    value={formData.status} 
-                    onChange={handleChange} 
-                    className="input-field"
-                  >
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Pasif</option>
+                  <label className="text-sm font-medium block mb-1">Durum</label>
+                  <select name="status" value={formData.status} onChange={(e)=>setFormData({...formData, status:e.target.value})} className="input-field">
+                    <option value="active">Aktif</option><option value="inactive">Pasif</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Notlar</label>
-                  <textarea 
-                    name="notes" 
-                    value={formData.notes || ''} 
-                    onChange={handleChange} 
-                    rows={4} 
-                    className="input-field" 
-                  />
-                </div>
               </div>
             </div>
 
-            {/* Butonlar */}
-            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-              <button 
-                type="button" 
-                onClick={() => router.push('/customers')} 
-                className="btn-secondary flex items-center gap-2"
-              >
-                <X className="w-5 h-5" /> İptal
-              </button>
-              <button 
-                type="submit" 
-                disabled={saving} 
-                className="btn-primary flex items-center gap-2 disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>Kaydediliyor...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    <span>Değişiklikleri Kaydet</span>
-                  </>
-                )}
-              </button>
+          {/* Kontaklar */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-lg flex items-center gap-2"><User className="w-5 h-5 text-blue-600"/> İlgili Kişiler</h2>
+              <button type="button" onClick={addContact} className="btn-secondary text-sm py-1 px-3 flex items-center gap-2"><UserPlus className="w-4 h-4"/> Ekle</button>
             </div>
-          </form>
-        </div>
+            <div className="space-y-3">
+              {contacts.map((contact, index) => (
+                <div key={index} className="flex flex-col md:flex-row gap-3 items-start p-3 bg-gray-50 rounded border">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3 w-full">
+                    <input placeholder="Ad Soyad" value={contact.name} onChange={(e)=>handleContactChange(index, 'name', e.target.value)} className="input-field" />
+                    <input placeholder="Departman" value={contact.role} onChange={(e)=>handleContactChange(index, 'role', e.target.value)} className="input-field" />
+                    <input placeholder="Email" value={contact.email} onChange={(e)=>handleContactChange(index, 'email', e.target.value)} className="input-field" />
+                    <input placeholder="Telefon" value={contact.phone} onChange={(e)=>handleContactChange(index, 'phone', e.target.value)} className="input-field" />
+                  </div>
+                  <button type="button" onClick={() => removeContact(index)} className="text-red-500 p-2 mt-1 md:mt-0"><Trash2 className="w-4 h-4"/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+             <button type="button" onClick={() => router.push('/customers')} className="btn-secondary"><X className="w-4 h-4 mr-2"/> İptal</button>
+             <button type="submit" disabled={saving} className="btn-primary"><Save className="w-4 h-4 mr-2"/> Güncelle</button>
+          </div>
+        </form>
       </div>
     </DashboardLayout>
   )
