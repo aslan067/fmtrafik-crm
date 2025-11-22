@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
-import { ArrowLeft, Send, Check, X, Edit, Printer, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Send, Check, X, Edit, Printer } from 'lucide-react'
 
 export default function QuoteDetailPage() {
   const router = useRouter()
   const params = useParams()
   
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null) // Hata durumu eklendi
+  const [error, setError] = useState(null)
   const [quote, setQuote] = useState(null)
   const [items, setItems] = useState([])
   const [company, setCompany] = useState(null)
@@ -34,29 +34,25 @@ export default function QuoteDetailPage() {
         return
       }
 
-      // 1. Kullanıcı Profilini ve Şirket ID'sini Çek
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('company_id')
         .eq('id', user.id)
         .single()
 
-      if (profileError || !profile) throw new Error('Kullanıcı profili veya şirket bilgisi bulunamadı. Lütfen çıkış yapıp tekrar girin.')
+      if (profileError || !profile) throw new Error('Kullanıcı profili bulunamadı.')
 
-      // 2. Şirket Bilgileri
-      const { data: companyData, error: companyError } = await supabase
+      const { data: companyData } = await supabase
         .from('companies')
         .select('*')
         .eq('id', profile.company_id)
         .single()
       
-      if (companyError) console.error('Şirket bilgisi hatası:', companyError)
       setCompany(companyData)
 
-      // 3. Teklif Detayı (Müşteri bağlantısı ile)
       const { data: quoteData, error: quoteError } = await supabase
         .from('quotes')
-        .select('*, customers!inner(*)') // !inner join ile müşteri yoksa teklifi de getirme riskini göze alıyoruz, normalde left join yeterli
+        .select('*, customers!inner(*)')
         .eq('id', params.id)
         .single()
 
@@ -65,7 +61,6 @@ export default function QuoteDetailPage() {
       setQuote(quoteData)
       setCustomer(quoteData.customers)
 
-      // 4. Ek Veriler (Paralel)
       const [itemsRes, creatorRes, contactRes, banksRes] = await Promise.all([
         supabase.from('quote_items').select('*, products(image_url, product_code, specifications)').eq('quote_id', params.id).order('sort_order'),
         supabase.from('user_profiles').select('*').eq('id', quoteData.created_by).single(),
@@ -135,14 +130,7 @@ export default function QuoteDetailPage() {
 
   if (loading) return <div className="h-screen flex justify-center items-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
   
-  if (error) return (
-    <div className="h-screen flex flex-col justify-center items-center p-6 text-center">
-      <AlertCircle className="w-12 h-12 text-red-500 mb-4"/>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">Bir Hata Oluştu</h2>
-      <p className="text-gray-600 bg-gray-100 p-4 rounded font-mono text-sm">{error}</p>
-      <button onClick={() => router.push('/quotes')} className="mt-6 btn-secondary">Listeye Dön</button>
-    </div>
-  )
+  if (error) return <div className="text-center py-20 text-red-500">{error}</div>
 
   if (!quote) return <div className="text-center py-20 text-gray-500">Teklif bulunamadı.</div>
 
@@ -198,12 +186,16 @@ export default function QuoteDetailPage() {
           id="quote-document"
           className="mx-auto bg-white shadow-2xl print:shadow-none max-w-[210mm] min-h-[297mm] p-[10mm] relative text-xs text-gray-800 print:w-full print:max-w-none font-sans leading-tight"
         >
-          {/* --- HEADER (Compact) --- */}
+          {/* --- HEADER (Compact & Logo Büyütüldü) --- */}
           <div className="flex justify-between items-end border-b-2 border-gray-800 pb-4 mb-6">
-            <div className="flex items-center gap-4">
-              {company?.logo_url && <img src={company.logo_url} alt="Logo" className="h-12 w-auto object-contain" />}
+            <div className="flex items-center gap-6">
+              {company?.logo_url && (
+                // Logo BÜYÜTÜLDÜ (h-12 -> h-24)
+                <img src={company.logo_url} alt="Logo" className="h-24 w-auto object-contain" />
+              )}
               <div>
-                <h1 className="font-bold text-lg text-gray-900">{company?.name}</h1>
+                {/* Şirket İsmi KÜÇÜLTÜLDÜ (text-lg -> text-base) */}
+                <h1 className="font-bold text-base text-gray-900 uppercase tracking-tight">{company?.name}</h1>
                 <div className="text-[10px] text-gray-500 space-y-0.5 mt-1">
                   <p>{company?.address}</p>
                   <div className="flex gap-2">
@@ -225,8 +217,8 @@ export default function QuoteDetailPage() {
             </div>
           </div>
 
-          {/* --- MÜŞTERİ BİLGİLERİ (Compact) --- */}
-          <div className="flex justify-between mb-6 gap-8 items-start">
+          {/* --- MÜŞTERİ BİLGİLERİ (Ara Boşluk Kaldırıldı) --- */}
+          <div className="flex justify-between mb-4 gap-8 items-start">
             <div className="flex-1">
               <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.to}</h3>
               <p className="font-bold text-base text-gray-900">{customer?.name}</p>
@@ -247,13 +239,6 @@ export default function QuoteDetailPage() {
             )}
           </div>
 
-          {/* --- KONU --- */}
-          {quote.title && (
-            <div className="mb-4 bg-gray-50 p-1.5 rounded border border-gray-100 text-center font-semibold text-gray-800 text-sm">
-              {quote.title}
-            </div>
-          )}
-
           {/* --- TABLO (Optimize Edilmiş) --- */}
           <table className="w-full mb-6 border-collapse">
             <thead>
@@ -270,25 +255,26 @@ export default function QuoteDetailPage() {
             <tbody className="text-xs">
               {items.map((item, i) => (
                 <tr key={i} className="border-b border-gray-200 break-inside-avoid">
-                  <td className="py-1.5 px-2 text-center text-gray-500">{i + 1}</td>
-                  <td className="py-1.5 px-2">
-                    <div className="flex gap-2 items-start">
+                  <td className="py-2 px-2 text-center text-gray-500 align-top">{i + 1}</td>
+                  <td className="py-2 px-2">
+                    <div className="flex gap-3 items-start">
+                      {/* Ürün Görseli Büyütüldü ve Hizalandı */}
                       {quote.show_product_images && item.products?.image_url && (
                         <img 
                           src={item.products.image_url} 
-                          className="w-8 h-8 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply flex-shrink-0" 
+                          className="w-12 h-12 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply flex-shrink-0" 
                           alt="" 
                         />
                       )}
-                      <div>
-                        <p className="font-bold text-gray-900">{item.description}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 leading-snug">{item.description}</p>
                         {item.products?.product_code && (
                           <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>
                         )}
                         {/* Teknik özellikler */}
                         {quote.show_specifications && item.products?.specifications && (
-                          <div className="text-[9px] text-gray-500 mt-0.5 leading-tight">
-                            {Object.entries(item.products.specifications).slice(0,3).map(([k,v]) => (
+                          <div className="text-[9px] text-gray-500 mt-1 leading-tight">
+                            {Object.entries(item.products.specifications).slice(0,4).map(([k,v]) => (
                               <span key={k} className="mr-2 inline-block text-gray-400"><b className="text-gray-500">{k}:</b> {v}</span>
                             ))}
                           </div>
@@ -296,22 +282,22 @@ export default function QuoteDetailPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-1.5 px-2 text-center font-medium whitespace-nowrap">{item.quantity} {item.products?.unit}</td>
-                  <td className="py-1.5 px-2 text-right font-mono">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
+                  <td className="py-2 px-2 text-center font-medium whitespace-nowrap align-top pt-3">{item.quantity} {item.products?.unit}</td>
+                  <td className="py-2 px-2 text-right font-mono align-top pt-3">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
                   
                   {quote.discount_amount > 0 && (
-                    <td className="py-1.5 px-2 text-center text-red-600 text-[10px]">
+                    <td className="py-2 px-2 text-center text-red-600 text-[10px] align-top pt-3">
                       {item.discount_percentage > 0 ? `%${item.discount_percentage}` : '-'}
                     </td>
                   )}
                   
                   {items.some(i => i.tax_rate > 0) && (
-                    <td className="py-1.5 px-2 text-center text-gray-500 text-[10px]">
+                    <td className="py-2 px-2 text-center text-gray-500 text-[10px] align-top pt-3">
                       {item.tax_rate > 0 ? `%${item.tax_rate}` : '-'}
                     </td>
                   )}
                   
-                  <td className="py-1.5 px-2 text-right font-bold text-gray-900">
+                  <td className="py-2 px-2 text-right font-bold text-gray-900 align-top pt-3">
                     {symbol}{parseFloat(item.total_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}
                   </td>
                 </tr>
@@ -413,7 +399,7 @@ export default function QuoteDetailPage() {
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 10mm 15mm !important;
+            padding: 5mm !important; /* KENAR BOŞLUĞU MİNİMİZE EDİLDİ */
             box-shadow: none !important;
             border: none !important;
           }
