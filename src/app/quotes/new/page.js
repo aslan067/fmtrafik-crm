@@ -194,7 +194,6 @@ export default function NewQuotePage() {
       item.unit_price = newUnitPrice
       
       if (newListPrice > 0) {
-        // İskonto oranını virgülden sonra 2 hane olacak şekilde hesapla
         const discount = ((newListPrice - newUnitPrice) / newListPrice) * 100
         item.discount_percentage = parseFloat(discount.toFixed(2))
       } else {
@@ -264,6 +263,7 @@ export default function NewQuotePage() {
     const generalDiscountAmount = subtotal * (parseFloat(formData.discount_percentage) || 0) / 100
     const subtotalAfterDiscount = subtotal - generalDiscountAmount
     
+    // KDV Hesaplama (Vergi matrahı üzerinden)
     const taxMultiplier = subtotal > 0 ? subtotalAfterDiscount / subtotal : 1
     const finalTaxAmount = totalTax * taxMultiplier
     
@@ -288,8 +288,10 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // RPC ile Profesyonel Numara (Örn: 2025-1001)
-      const { data: quoteNumber, error: rpcError } = await supabase.rpc('get_next_quote_number', { p_company_id: profile.company_id })
+      // --- NUMARA ÜRETME (YENİ RPC) ---
+      const { data: quoteNumber, error: rpcError } = await supabase
+        .rpc('generate_quote_number', { p_company_id: profile.company_id })
+
       if (rpcError) throw rpcError
 
       const { data: quote, error: quoteError } = await supabase
@@ -298,7 +300,7 @@ export default function NewQuotePage() {
           company_id: profile.company_id,
           customer_id: formData.customer_id,
           contact_id: formData.contact_id || null,
-          quote_number: quoteNumber,
+          quote_number: quoteNumber, // Otomatik üretilen
           title: formData.title || `Teklif #${quoteNumber}`,
           status: 'draft',
           template_code: formData.template_code,
@@ -382,7 +384,6 @@ export default function NewQuotePage() {
             
             {/* SOL KOLON (3/12) */}
             <div className="xl:col-span-3 space-y-6">
-              
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
@@ -407,7 +408,7 @@ export default function NewQuotePage() {
 
                 <div>
                   <label className="label-text">Teklif Başlığı</label>
-                  <input type="text" value={formData.title} onChange={(e)=>setFormData({...formData, title:e.target.value})} className="input-field" placeholder="Örn: 2025 Trafik Seti" />
+                  <input type="text" value={formData.title} onChange={(e)=>setFormData({...formData, title:e.target.value})} className="input-field" placeholder="Otomatik" />
                 </div>
                 <div>
                   <label className="label-text">Geçerlilik Tarihi</label>
@@ -436,7 +437,6 @@ export default function NewQuotePage() {
                   </div>
                 </div>
                 
-                {/* ÇOKLU BANKA SEÇİMİ */}
                 <div className="relative" ref={bankDropdownRef}>
                   <label className="label-text mb-1">Banka Hesapları</label>
                   <button 
@@ -475,7 +475,7 @@ export default function NewQuotePage() {
               </div>
 
               <div className="card space-y-4">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Ayarlar</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Şablon & Görünüm</h3>
                 <div className="grid grid-cols-1 gap-2">
                   {templates.map(t => (
                     <button type="button" key={t.id} onClick={() => setFormData({...formData, template_code: t.id})} className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${formData.template_code === t.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -497,7 +497,6 @@ export default function NewQuotePage() {
                   </label>
                 </div>
               </div>
-
             </div>
 
             {/* SAĞ KOLON (9/12) */}
@@ -584,7 +583,7 @@ export default function NewQuotePage() {
                 <div className="card bg-gray-50 border border-gray-200">
                   <div className="space-y-3">
                     <div className="flex justify-between text-gray-600"><span>Ara Toplam</span><span className="font-medium">{currencySymbols[formData.currency]}{totals.subtotal.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
-                    <div className="flex justify-between items-center text-gray-600"><span className="flex items-center gap-2">Genel İskonto <input type="number" value={formData.discount_percentage} onChange={(e)=>setFormData({...formData, discount_percentage:e.target.value})} className="w-16 input-field py-0 px-1 text-center text-sm" min="0" max="100"/> %</span><span className="text-red-600">-{currencySymbols[formData.currency]}{totals.generalDiscountAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
+                    <div className="flex justify-between items-center text-gray-600"><span className="flex items-center gap-2">Genel İskonto <input type="number" value={formData.discount_percentage} onChange={(e)=>setFormData({...formData, discount_percentage:e.target.value})} className="w-16 input-field py-0 px-1 text-center text-sm" min="0" max="100" step="0.01"/> %</span><span className="text-red-600">-{currencySymbols[formData.currency]}{totals.generalDiscountAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                     <div className="flex justify-between items-center text-gray-600"><span className="flex items-center gap-2">KDV Toplamı</span><span>{currencySymbols[formData.currency]}{totals.finalTaxAmount.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                     <div className="pt-4 border-t border-gray-300 flex justify-between items-center"><span className="text-lg font-bold text-gray-900">GENEL TOPLAM</span><span className="text-2xl font-bold text-blue-700">{currencySymbols[formData.currency]}{totals.total.toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                   </div>
