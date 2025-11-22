@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Send, Check, X, Edit, Printer } from 'lucide-react'
+import { supabase, getCurrentUser } from '@/lib/supabase'
+import { ArrowLeft, Send, Check, X, Edit, Printer, AlertCircle } from 'lucide-react'
 
 export default function QuoteDetailPage() {
   const router = useRouter()
   const params = useParams()
   
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null) // Hata durumu eklendi
   const [quote, setQuote] = useState(null)
   const [items, setItems] = useState([])
   const [company, setCompany] = useState(null)
@@ -24,25 +25,47 @@ export default function QuoteDetailPage() {
 
   async function loadQuoteData() {
     try {
+      setLoading(true)
+      setError(null)
+
       const user = await getCurrentUser()
-      const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      // 1. Kullanıcı Profilini ve Şirket ID'sini Çek
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !profile) throw new Error('Kullanıcı profili veya şirket bilgisi bulunamadı. Lütfen çıkış yapıp tekrar girin.')
+
+      // 2. Şirket Bilgileri
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', profile.company_id)
+        .single()
       
-      // 1. Şirket Bilgileri
-      const { data: companyData } = await supabase.from('companies').select('*').eq('id', profile.company_id).single()
+      if (companyError) console.error('Şirket bilgisi hatası:', companyError)
       setCompany(companyData)
 
-      // 2. Teklif Detayı
+      // 3. Teklif Detayı (Müşteri bağlantısı ile)
       const { data: quoteData, error: quoteError } = await supabase
         .from('quotes')
-        .select('*, customers(*)')
+        .select('*, customers!inner(*)') // !inner join ile müşteri yoksa teklifi de getirme riskini göze alıyoruz, normalde left join yeterli
         .eq('id', params.id)
         .single()
 
-      if (quoteError) throw quoteError
+      if (quoteError) throw new Error(`Teklif bulunamadı: ${quoteError.message}`)
+      
       setQuote(quoteData)
       setCustomer(quoteData.customers)
 
-      // 3. Ek Veriler
+      // 4. Ek Veriler (Paralel)
       const [itemsRes, creatorRes, contactRes, banksRes] = await Promise.all([
         supabase.from('quote_items').select('*, products(image_url, product_code, specifications)').eq('quote_id', params.id).order('sort_order'),
         supabase.from('user_profiles').select('*').eq('id', quoteData.created_by).single(),
@@ -57,8 +80,9 @@ export default function QuoteDetailPage() {
       setContact(contactRes.data)
       setBanks(banksRes.data || [])
 
-    } catch (error) {
-      console.error('Error:', error)
+    } catch (err) {
+      console.error('Detay Yükleme Hatası:', err)
+      setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -66,8 +90,13 @@ export default function QuoteDetailPage() {
 
   async function updateStatus(newStatus) {
     if(!confirm(`Teklif durumunu "${newStatus}" olarak değiştirmek istiyor musunuz?`)) return
-    await supabase.from('quotes').update({ status: newStatus }).eq('id', params.id)
-    setQuote({ ...quote, status: newStatus })
+    try {
+      const { error } = await supabase.from('quotes').update({ status: newStatus }).eq('id', params.id)
+      if (error) throw error
+      setQuote({ ...quote, status: newStatus })
+    } catch (err) {
+      alert('Güncelleme hatası: ' + err.message)
+    }
   }
 
   const handlePrint = () => {
@@ -104,8 +133,18 @@ export default function QuoteDetailPage() {
     preparedBy: isEn ? 'Prepared By' : 'Hazırlayan'
   }
 
-  if (loading) return <div className="h-screen flex justify-center items-center">Yükleniyor...</div>
-  if (!quote) return <div className="text-center py-10">Bulunamadı</div>
+  if (loading) return <div className="h-screen flex justify-center items-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
+  
+  if (error) return (
+    <div className="h-screen flex flex-col justify-center items-center p-6 text-center">
+      <AlertCircle className="w-12 h-12 text-red-500 mb-4"/>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Bir Hata Oluştu</h2>
+      <p className="text-gray-600 bg-gray-100 p-4 rounded font-mono text-sm">{error}</p>
+      <button onClick={() => router.push('/quotes')} className="mt-6 btn-secondary">Listeye Dön</button>
+    </div>
+  )
+
+  if (!quote) return <div className="text-center py-20 text-gray-500">Teklif bulunamadı.</div>
 
   return (
     <div className="min-h-screen bg-gray-100 print:bg-white flex flex-col">
@@ -374,7 +413,7 @@ export default function QuoteDetailPage() {
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 10mm 15mm !important; /* Üst/Alt 10mm, Yanlar 15mm */
+            padding: 10mm 15mm !important;
             box-shadow: none !important;
             border: none !important;
           }
