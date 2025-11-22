@@ -224,7 +224,7 @@ export default function QuoteDetailPage() {
           </div>
 
           {/* --- MÜŞTERİ BİLGİLERİ --- */}
-          <div className="flex justify-between mb-6 gap-8 items-start">
+          <div className="flex justify-between mb-4 gap-8 items-start">
             <div className="flex-1">
               <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.to}</h3>
               <p className="font-bold text-base text-gray-900">{customer?.name}</p>
@@ -245,9 +245,14 @@ export default function QuoteDetailPage() {
             )}
           </div>
 
-          {/* KONU ALANI KALDIRILDI */}
+          {/* --- KONU --- */}
+          {quote.title && (
+            <div className="mb-4 bg-gray-50 p-1.5 rounded border border-gray-100 text-center font-semibold text-gray-800 text-sm">
+              {quote.title}
+            </div>
+          )}
 
-          {/* --- TABLO (Optimize Edilmiş ve Sıkıştırılmış) --- */}
+          {/* --- TABLO --- */}
           <table className="w-full mb-6 border-collapse">
             <thead>
               <tr className="border-b-2 border-gray-800 text-[10px] uppercase font-bold text-gray-600 bg-gray-50">
@@ -266,7 +271,6 @@ export default function QuoteDetailPage() {
                   <td className="py-2 px-2 text-center text-gray-500 align-top">{i + 1}</td>
                   <td className="py-2 px-2">
                     <div className="flex gap-3 items-start">
-                      {/* Ürün Görseli Optimize Edildi */}
                       {quote.show_product_images && item.products?.image_url && (
                         <img 
                           src={item.products.image_url} 
@@ -279,14 +283,10 @@ export default function QuoteDetailPage() {
                         {item.products?.product_code && (
                           <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>
                         )}
-                        {/* Teknik Özellikler (Grid Yapısı ve Kısıtlama) */}
                         {quote.show_specifications && item.products?.specifications && (
-                          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 max-w-[300px]">
+                          <div className="text-[9px] text-gray-500 mt-1 leading-tight">
                             {Object.entries(item.products.specifications).slice(0,6).map(([k,v]) => (
-                              <div key={k} className="text-[9px] text-gray-500 flex gap-1 overflow-hidden">
-                                <span className="font-semibold text-gray-400">{k}:</span>
-                                <span className="truncate" title={v}>{truncateText(v, 25)}</span>
-                              </div>
+                              <span key={k} className="mr-2 inline-block text-gray-400"><b className="text-gray-500">{k}:</b> {truncateText(v, 25)}</span>
                             ))}
                           </div>
                         )}
@@ -294,7 +294,20 @@ export default function QuoteDetailPage() {
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center font-medium whitespace-nowrap align-top pt-3">{item.quantity} {item.products?.unit}</td>
-                  <td className="py-2 px-2 text-right font-mono align-top pt-3">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
+                  
+                  {/* FİYAT SÜTUNU (GÜNCELLENDİ: LİSTE VE NET FİYAT) */}
+                  <td className="py-2 px-2 text-right align-top pt-3">
+                    {/* Eğer iskonto varsa Liste Fiyatını üstte çizili göster */}
+                    {item.discount_percentage > 0 && (
+                      <div className="text-[9px] text-gray-400 line-through decoration-red-300">
+                        {symbol}{parseFloat(item.list_price || 0).toLocaleString('tr-TR', {minimumFractionDigits:2})}
+                      </div>
+                    )}
+                    {/* Asıl (Net) Birim Fiyat */}
+                    <div className="font-mono font-bold text-gray-900">
+                      {symbol}{parseFloat(item.unit_price || 0).toLocaleString('tr-TR', {minimumFractionDigits:2})}
+                    </div>
+                  </td>
                   
                   {quote.discount_amount > 0 && (
                     <td className="py-2 px-2 text-center text-red-600 text-[10px] align-top pt-3">
@@ -418,7 +431,7 @@ export default function QuoteDetailPage() {
             max-width: none !important;
             min-height: 0 !important;
             margin: 0 !important;
-            padding: 5mm !important; /* Minimum Kenar Boşluğu */
+            padding: 5mm !important;
             box-shadow: none !important;
             border: none !important;
             background-color: white !important;
