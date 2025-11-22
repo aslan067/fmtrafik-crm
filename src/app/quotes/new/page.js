@@ -39,8 +39,8 @@ export default function NewQuotePage() {
     exchange_rate: 1.00,
     template_code: 'standard_tr',
     selected_bank_ids: [],
-    show_product_images: true,   // Görsel Gösterimi
-    show_specifications: false,  // YENİ: Teknik Özellik Gösterimi
+    show_product_images: true,
+    show_specifications: false,
     notes: '',
     terms: '', 
     default_tax_rate: 20,
@@ -79,7 +79,6 @@ export default function NewQuotePage() {
     date.setDate(date.getDate() + 15)
     setFormData(prev => ({ ...prev, valid_until: date.toISOString().split('T')[0] }))
 
-    // Dropdown dışına tıklayınca kapatma
     function handleClickOutside(event) {
       if (bankDropdownRef.current && !bankDropdownRef.current.contains(event.target)) {
         setIsBankDropdownOpen(false)
@@ -136,7 +135,6 @@ export default function NewQuotePage() {
       setFormData(prev => ({ ...prev, terms: trTerms }))
 
       if (bankRes.data?.length > 0) {
-        // Sadece TRY hesaplarını varsayılan seç
         const defaultBanks = bankRes.data.filter(b => b.currency === 'TRY').map(b => b.id)
         if(defaultBanks.length > 0) setFormData(prev => ({ ...prev, selected_bank_ids: defaultBanks }))
         else setFormData(prev => ({ ...prev, selected_bank_ids: [bankRes.data[0].id] }))
@@ -156,7 +154,7 @@ export default function NewQuotePage() {
     else setFormData(prev => ({ ...prev, contact_id: '' }))
   }
 
-  // --- Mantık ve Hesaplama ---
+  // --- Fiyat Motoru ---
 
   const convertPrice = (price, fromCurrency, toCurrency, rate) => {
     if (!price) return 0
@@ -190,16 +188,20 @@ export default function NewQuotePage() {
     const item = newItems[index]
     
     if (field === 'unit_price') {
+      // Net fiyat girildi -> İskontoyu hesapla
       const newListPrice = item.list_price || 0
       const newUnitPrice = parseFloat(value) || 0
       item.unit_price = newUnitPrice
+      
       if (newListPrice > 0) {
+        // İskonto oranını virgülden sonra 2 hane olacak şekilde hesapla
         const discount = ((newListPrice - newUnitPrice) / newListPrice) * 100
         item.discount_percentage = parseFloat(discount.toFixed(2))
       } else {
         item.discount_percentage = 0
       }
     } else if (field === 'discount_percentage') {
+      // İskonto girildi -> Net fiyatı hesapla
       const discount = parseFloat(value) || 0
       item.discount_percentage = discount
       item.unit_price = (item.list_price || 0) * (1 - discount / 100)
@@ -286,6 +288,7 @@ export default function NewQuotePage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
+      // RPC ile Profesyonel Numara (Örn: 2025-1001)
       const { data: quoteNumber, error: rpcError } = await supabase.rpc('get_next_quote_number', { p_company_id: profile.company_id })
       if (rpcError) throw rpcError
 
@@ -301,7 +304,7 @@ export default function NewQuotePage() {
           template_code: formData.template_code,
           selected_bank_ids: formData.selected_bank_ids,
           show_product_images: formData.show_product_images,
-          show_specifications: formData.show_specifications, // Yeni alan
+          show_specifications: formData.show_specifications,
           currency: formData.currency,
           exchange_rate: parseFloat(formData.exchange_rate),
           subtotal: totals.subtotal,
@@ -350,7 +353,6 @@ export default function NewQuotePage() {
       <div className="p-6 min-h-screen bg-gray-50/50">
         <div className="max-w-[1600px] mx-auto">
           
-          {/* Üst Bar: Başlık ve Kâr */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Yeni Teklif Oluştur</h1>
@@ -381,7 +383,6 @@ export default function NewQuotePage() {
             {/* SOL KOLON (3/12) */}
             <div className="xl:col-span-3 space-y-6">
               
-              {/* Müşteri */}
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
@@ -406,7 +407,7 @@ export default function NewQuotePage() {
 
                 <div>
                   <label className="label-text">Teklif Başlığı</label>
-                  <input type="text" value={formData.title} onChange={(e)=>setFormData({...formData, title:e.target.value})} className="input-field" placeholder="Örn: 2024 Trafik Seti" />
+                  <input type="text" value={formData.title} onChange={(e)=>setFormData({...formData, title:e.target.value})} className="input-field" placeholder="Örn: 2025 Trafik Seti" />
                 </div>
                 <div>
                   <label className="label-text">Geçerlilik Tarihi</label>
@@ -414,11 +415,10 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
-              {/* Para & Banka */}
               <div className="card space-y-4 bg-blue-50/50 border-blue-100">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Ödeme & Banka</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Para Birimi & Kur</h3>
                 <div>
-                  <label className="label-text">Para Birimi</label>
+                  <label className="label-text">Teklif Para Birimi</label>
                   <select value={formData.currency} onChange={(e)=>setFormData({...formData, currency:e.target.value})} className="input-field">
                     <option value="TRY">Türk Lirası (TRY)</option>
                     <option value="USD">Amerikan Doları (USD)</option>
@@ -436,7 +436,7 @@ export default function NewQuotePage() {
                   </div>
                 </div>
                 
-                {/* MODERN ÇOKLU BANKA SEÇİMİ (Dropdown) */}
+                {/* ÇOKLU BANKA SEÇİMİ */}
                 <div className="relative" ref={bankDropdownRef}>
                   <label className="label-text mb-1">Banka Hesapları</label>
                   <button 
@@ -474,9 +474,8 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
-              {/* Şablon & Görünüm */}
               <div className="card space-y-4">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Şablon & Görünüm</h3>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Ayarlar</h3>
                 <div className="grid grid-cols-1 gap-2">
                   {templates.map(t => (
                     <button type="button" key={t.id} onClick={() => setFormData({...formData, template_code: t.id})} className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${formData.template_code === t.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -553,9 +552,12 @@ export default function NewQuotePage() {
                               <input type="text" value={item.description} onChange={(e)=>handleItemChange(index, 'description', e.target.value)} className="input-field text-xs bg-transparent border-transparent focus:bg-white focus:border-blue-500 px-1 text-gray-500" placeholder="Açıklama..." />
                             </td>
                             <td className="p-2"><input type="number" value={item.quantity} onChange={(e)=>handleItemChange(index, 'quantity', e.target.value)} className="input-field text-center" min="1" /></td>
+                            {/* step="0.01" EKLENDİ */}
                             <td className="p-2"><input type="number" value={item.list_price} onChange={(e)=>handleItemChange(index, 'list_price', e.target.value)} className="input-field text-right text-gray-500" step="0.01" disabled /></td>
-                            <td className="p-2"><input type="number" value={item.discount_percentage} onChange={(e)=>handleItemChange(index, 'discount_percentage', e.target.value)} className="input-field text-center text-red-600 font-medium" min="0" max="100" /></td>
+                            {/* step="0.01" EKLENDİ */}
+                            <td className="p-2"><input type="number" value={item.discount_percentage} onChange={(e)=>handleItemChange(index, 'discount_percentage', e.target.value)} className="input-field text-center text-red-600 font-medium" min="0" max="100" step="0.01" /></td>
                             <td className="p-2">
+                              {/* step="0.01" EKLENDİ */}
                               <input type="number" value={item.unit_price} onChange={(e)=>handleItemChange(index, 'unit_price', e.target.value)} className="input-field text-right font-bold text-gray-800" step="0.01" />
                             </td>
                             <td className="p-2"><input type="number" value={item.tax_rate} onChange={(e)=>handleItemChange(index, 'tax_rate', e.target.value)} className="input-field text-center text-xs" /></td>
