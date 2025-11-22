@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { supabase, getCurrentUser } from '@/lib/supabase'
-import { ArrowLeft, Download, Send, Check, X, Edit, Printer, Phone, Mail, FileText, ExternalLink } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { ArrowLeft, Send, Check, X, Edit, Printer } from 'lucide-react'
 
 export default function QuoteDetailPage() {
   const router = useRouter()
@@ -80,7 +80,7 @@ export default function QuoteDetailPage() {
   // --- Şablon Dil Ayarları ---
   const isEn = quote?.template_code !== 'standard_tr'
   const t = {
-    quoteTitle: isEn ? 'PROFORMA INVOICE / QUOTE' : 'FİYAT TEKLİFİ',
+    quoteTitle: isEn ? 'PROFORMA INVOICE' : 'FİYAT TEKLİFİ',
     quoteNo: isEn ? 'Quote No' : 'Teklif No',
     date: isEn ? 'Date' : 'Tarih',
     validUntil: isEn ? 'Valid Until' : 'Geçerlilik',
@@ -154,68 +154,53 @@ export default function QuoteDetailPage() {
       {/* --- BELGE GÖRÜNTÜLEME ALANI --- */}
       <div className="flex-1 overflow-auto py-8 px-4 print:p-0 print:overflow-visible">
         
-        {/* A4 KAĞIT KONTEYNERI */}
+        {/* A4 KAĞIT KONTEYNERI (Optimize Edilmiş) */}
         <div 
           id="quote-document"
-          className="mx-auto bg-white shadow-2xl print:shadow-none max-w-[210mm] min-h-[297mm] p-[10mm] md:p-[15mm] relative text-sm text-gray-800 print:w-full print:max-w-none"
+          className="mx-auto bg-white shadow-2xl print:shadow-none max-w-[210mm] min-h-[297mm] p-[10mm] relative text-xs text-gray-800 print:w-full print:max-w-none font-sans leading-tight"
         >
-          {/* --- HEADER --- */}
-          <div className="flex justify-between items-start border-b-2 border-gray-800 pb-6 mb-8">
-            <div className="w-1/2">
-              {company?.logo_url ? (
-                <img src={company.logo_url} alt="Logo" className="h-16 object-contain mb-4" />
-              ) : (
-                <h1 className="font-bold text-2xl text-gray-900 mb-2">{company?.name}</h1>
-              )}
-              <div className="text-xs text-gray-600 space-y-1">
-                <p className="font-medium">{company?.address}</p>
-                <div className="flex gap-3">
-                  {company?.phone && <span>{t.phone}: {company.phone}</span>}
-                  {company?.email && <span>{t.email}: {company.email}</span>}
+          {/* --- HEADER (Compact) --- */}
+          <div className="flex justify-between items-end border-b-2 border-gray-800 pb-4 mb-6">
+            <div className="flex items-center gap-4">
+              {company?.logo_url && <img src={company.logo_url} alt="Logo" className="h-12 w-auto object-contain" />}
+              <div>
+                <h1 className="font-bold text-lg text-gray-900">{company?.name}</h1>
+                <div className="text-[10px] text-gray-500 space-y-0.5 mt-1">
+                  <p>{company?.address}</p>
+                  <div className="flex gap-2">
+                    {company?.phone && <span>{t.phone}: {company.phone}</span>}
+                    {company?.email && <span>{t.email}: {company.email}</span>}
+                  </div>
+                  {company?.tax_office && <p>VD: {company.tax_office} - No: {company.tax_number}</p>}
                 </div>
-                {company?.tax_office && <p>VD: {company.tax_office} - No: {company.tax_number}</p>}
-                {company?.website && <p>{company.website}</p>}
               </div>
             </div>
             
-            <div className="text-right w-1/2">
-              <h2 className="text-2xl font-light text-gray-400 uppercase tracking-widest mb-4">{t.quoteTitle}</h2>
-              
-              <div className="inline-block text-left bg-gray-50 p-3 rounded border border-gray-100 w-full max-w-[200px] float-right">
-                <div className="flex justify-between mb-1">
-                  <span className="text-gray-500 text-xs font-bold uppercase">{t.quoteNo}:</span>
-                  <span className="font-bold text-gray-900">{quote.quote_number}</span>
-                </div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-gray-500 text-xs font-bold uppercase">{t.date}:</span>
-                  <span>{new Date(quote.created_at).toLocaleDateString('tr-TR')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 text-xs font-bold uppercase">{t.validUntil}:</span>
-                  <span>{new Date(quote.valid_until).toLocaleDateString('tr-TR')}</span>
-                </div>
+            <div className="text-right">
+              <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-2">{t.quoteTitle}</h2>
+              <div className="text-xs text-gray-600 space-y-0.5">
+                <p><span className="font-semibold">{t.quoteNo}:</span> <span className="text-gray-900">{quote.quote_number}</span></p>
+                <p><span className="font-semibold">{t.date}:</span> {new Date(quote.created_at).toLocaleDateString('tr-TR')}</p>
+                <p><span className="font-semibold">{t.validUntil}:</span> {new Date(quote.valid_until).toLocaleDateString('tr-TR')}</p>
               </div>
             </div>
           </div>
 
-          {/* --- MÜŞTERİ BİLGİLERİ --- */}
-          <div className="flex justify-between mb-8 gap-8">
+          {/* --- MÜŞTERİ BİLGİLERİ (Compact) --- */}
+          <div className="flex justify-between mb-6 gap-8 items-start">
             <div className="flex-1">
-              <h3 className="text-xs font-bold text-gray-400 uppercase mb-1 border-b pb-1">{t.to}</h3>
-              <p className="font-bold text-lg text-gray-900">{customer?.name}</p>
-              <p className="text-gray-600 whitespace-pre-line text-xs mt-1">{customer?.address}</p>
-              <div className="mt-2 text-xs text-gray-500">
-                {customer?.tax_office && <span>{customer.tax_office} VD - </span>}
-                {customer?.tax_number && <span>VKN: {customer.tax_number}</span>}
-              </div>
+              <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.to}</h3>
+              <p className="font-bold text-base text-gray-900">{customer?.name}</p>
+              <p className="text-gray-600 whitespace-pre-line mt-0.5 max-w-sm">{customer?.address}</p>
+              {customer?.tax_office && <p className="text-gray-500 mt-1 text-[10px]">VD: {customer.tax_office} - VKN: {customer.tax_number}</p>}
             </div>
             
             {contact && (
               <div className="w-1/3 text-right">
-                <h3 className="text-xs font-bold text-gray-400 uppercase mb-1 border-b pb-1">{t.attention}</h3>
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.attention}</h3>
                 <p className="font-bold text-gray-900">{contact.name}</p>
-                <p className="text-xs text-gray-600">{contact.role}</p>
-                <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+                {contact.role && <p className="text-gray-600">{contact.role}</p>}
+                <div className="mt-1 text-gray-500 space-y-0.5 text-[10px]">
                   {contact.phone && <p>{contact.phone}</p>}
                   {contact.email && <p>{contact.email}</p>}
                 </div>
@@ -225,68 +210,69 @@ export default function QuoteDetailPage() {
 
           {/* --- KONU --- */}
           {quote.title && (
-            <div className="mb-6 bg-gray-50 p-2 rounded border border-gray-100 text-center font-medium text-gray-800">
+            <div className="mb-4 bg-gray-50 p-1.5 rounded border border-gray-100 text-center font-semibold text-gray-800 text-sm">
               {quote.title}
             </div>
           )}
 
-          {/* --- TABLO --- */}
-          <table className="w-full mb-8 border-collapse">
+          {/* --- TABLO (Optimize Edilmiş) --- */}
+          <table className="w-full mb-6 border-collapse">
             <thead>
-              <tr className="border-b-2 border-gray-800 text-xs uppercase font-bold text-gray-600 bg-gray-50">
-                <th className="py-2 px-2 text-center w-10">#</th>
-                <th className="py-2 px-2 text-left">{t.product}</th>
-                <th className="py-2 px-2 text-center w-20">{t.qty}</th>
-                <th className="py-2 px-2 text-right w-24">{t.price}</th>
-                {quote.discount_amount > 0 && <th className="py-2 px-2 text-center w-16">{t.discount}</th>}
-                {items.some(i => i.tax_rate > 0) && <th className="py-2 px-2 text-center w-16">{t.tax}</th>}
-                <th className="py-2 px-2 text-right w-28">{t.total}</th>
+              <tr className="border-b-2 border-gray-800 text-[10px] uppercase font-bold text-gray-600 bg-gray-50">
+                <th className="py-1.5 px-2 text-center w-8">#</th>
+                <th className="py-1.5 px-2 text-left">{t.product}</th>
+                <th className="py-1.5 px-2 text-center w-16">{t.qty}</th>
+                <th className="py-1.5 px-2 text-right w-24">{t.price}</th>
+                {quote.discount_amount > 0 && <th className="py-1.5 px-2 text-center w-14">{t.discount}</th>}
+                {items.some(i => i.tax_rate > 0) && <th className="py-1.5 px-2 text-center w-12">{t.tax}</th>}
+                <th className="py-1.5 px-2 text-right w-24">{t.total}</th>
               </tr>
             </thead>
-            <tbody className="text-sm">
+            <tbody className="text-xs">
               {items.map((item, i) => (
                 <tr key={i} className="border-b border-gray-200 break-inside-avoid">
-                  <td className="py-3 px-2 text-center text-gray-500">{i + 1}</td>
-                  <td className="py-3 px-2">
-                    <div className="flex gap-3">
+                  <td className="py-1.5 px-2 text-center text-gray-500">{i + 1}</td>
+                  <td className="py-1.5 px-2">
+                    <div className="flex gap-2 items-start">
                       {quote.show_product_images && item.products?.image_url && (
                         <img 
                           src={item.products.image_url} 
-                          className="w-12 h-12 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply" 
+                          className="w-8 h-8 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply flex-shrink-0" 
                           alt="" 
                         />
                       )}
                       <div>
                         <p className="font-bold text-gray-900">{item.description}</p>
                         {item.products?.product_code && (
-                          <p className="text-xs text-gray-500 font-mono mt-0.5">{item.products.product_code}</p>
+                          <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>
                         )}
+                        {/* Teknik özellikler */}
                         {quote.show_specifications && item.products?.specifications && (
-                          <div className="text-[10px] text-gray-500 mt-1 leading-tight">
-                            {Object.entries(item.products.specifications).slice(0,4).map(([k,v]) => (
-                              <span key={k} className="mr-2 inline-block">• {k}: {v}</span>
+                          <div className="text-[9px] text-gray-500 mt-0.5 leading-tight">
+                            {Object.entries(item.products.specifications).slice(0,3).map(([k,v]) => (
+                              <span key={k} className="mr-2 inline-block text-gray-400"><b className="text-gray-500">{k}:</b> {v}</span>
                             ))}
                           </div>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 px-2 text-center font-medium">{item.quantity} {item.products?.unit || 'Adet'}</td>
-                  <td className="py-3 px-2 text-right font-mono">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
+                  <td className="py-1.5 px-2 text-center font-medium whitespace-nowrap">{item.quantity} {item.products?.unit}</td>
+                  <td className="py-1.5 px-2 text-right font-mono">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
                   
                   {quote.discount_amount > 0 && (
-                    <td className="py-3 px-2 text-center text-red-600 text-xs">
+                    <td className="py-1.5 px-2 text-center text-red-600 text-[10px]">
                       {item.discount_percentage > 0 ? `%${item.discount_percentage}` : '-'}
                     </td>
                   )}
                   
                   {items.some(i => i.tax_rate > 0) && (
-                    <td className="py-3 px-2 text-center text-gray-500 text-xs">
+                    <td className="py-1.5 px-2 text-center text-gray-500 text-[10px]">
                       {item.tax_rate > 0 ? `%${item.tax_rate}` : '-'}
                     </td>
                   )}
                   
-                  <td className="py-3 px-2 text-right font-bold text-gray-900">
+                  <td className="py-1.5 px-2 text-right font-bold text-gray-900">
                     {symbol}{parseFloat(item.total_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}
                   </td>
                 </tr>
@@ -295,26 +281,26 @@ export default function QuoteDetailPage() {
           </table>
 
           {/* --- TOPLAMLAR --- */}
-          <div className="flex justify-end mb-8 break-inside-avoid">
-            <div className="w-72 space-y-2 text-right text-sm">
-              <div className="flex justify-between text-gray-600 border-b border-dashed pb-1">
+          <div className="flex justify-end mb-6 break-inside-avoid">
+            <div className="w-64 space-y-1 text-right text-xs">
+              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1">
                 <span>{t.subtotal}:</span>
                 <span>{symbol}{parseFloat(quote.subtotal).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
               </div>
               
               {quote.discount_amount > 0 && (
-                <div className="flex justify-between text-red-600 border-b border-dashed pb-1">
+                <div className="flex justify-between text-red-600 border-b border-dashed border-gray-300 pb-1">
                   <span>{t.generalDiscount} (%{quote.discount_percentage}):</span>
                   <span>-{symbol}{parseFloat(quote.discount_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
                 </div>
               )}
               
-              <div className="flex justify-between text-gray-600 border-b border-dashed pb-1">
+              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1">
                 <span>{t.vatTotal}:</span>
                 <span>{symbol}{parseFloat(quote.tax_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
               </div>
               
-              <div className="flex justify-between font-bold text-xl text-gray-900 pt-2 bg-gray-50 p-2 rounded">
+              <div className="flex justify-between font-bold text-lg text-gray-900 pt-1">
                 <span>{t.grandTotal}:</span>
                 <span>{symbol}{parseFloat(quote.total_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
               </div>
@@ -322,19 +308,18 @@ export default function QuoteDetailPage() {
           </div>
 
           {/* --- ALT BİLGİLER (Footer) --- */}
-          <div className="grid grid-cols-2 gap-8 pt-4 border-t-2 border-gray-200 break-inside-avoid">
+          <div className="grid grid-cols-2 gap-8 pt-4 border-t-2 border-gray-200 break-inside-avoid text-[10px]">
             
             {/* Sol: Banka ve Şartlar */}
-            <div className="space-y-6 text-xs">
+            <div className="space-y-4">
               {banks.length > 0 && (
                 <div>
-                  <h4 className="font-bold text-gray-800 uppercase mb-2 border-b w-fit pb-0.5">{t.bankInfo}</h4>
-                  <div className="space-y-2">
+                  <h4 className="font-bold text-gray-800 uppercase mb-1 border-b w-fit pb-0.5">{t.bankInfo}</h4>
+                  <div className="space-y-1.5">
                     {banks.map(bank => (
-                      <div key={bank.id} className="text-gray-600">
-                        <p className="font-bold text-gray-800">{bank.bank_name} - {bank.currency}</p>
-                        <p className="font-mono select-all">{bank.iban}</p>
-                        <p>{bank.branch_name} / {bank.account_name}</p>
+                      <div key={bank.id} className="text-gray-600 leading-snug">
+                        <span className="font-bold text-gray-800">{bank.bank_name} ({bank.currency}):</span> <span className="font-mono select-all">{bank.iban}</span>
+                        <br/><span className="text-gray-400 italic">{bank.branch_name} / {bank.account_name}</span>
                       </div>
                     ))}
                   </div>
@@ -343,8 +328,8 @@ export default function QuoteDetailPage() {
 
               {(quote.notes || quote.terms) && (
                 <div>
-                  <h4 className="font-bold text-gray-800 uppercase mb-2 border-b w-fit pb-0.5">{t.terms}</h4>
-                  {quote.notes && <p className="mb-2 text-gray-700 italic">{quote.notes}</p>}
+                  <h4 className="font-bold text-gray-800 uppercase mb-1 border-b w-fit pb-0.5">{t.terms}</h4>
+                  {quote.notes && <p className="mb-2 text-gray-700 italic font-medium">{quote.notes}</p>}
                   <pre className="whitespace-pre-line font-sans text-gray-600 leading-relaxed">{quote.terms}</pre>
                 </div>
               )}
@@ -353,19 +338,19 @@ export default function QuoteDetailPage() {
             {/* Sağ: Hazırlayan ve İmza */}
             <div className="flex flex-col items-end justify-between">
               {creator && (
-                <div className="text-right mb-8">
-                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">{t.preparedBy}</p>
-                  <p className="font-bold text-gray-900 text-base">{creator.full_name}</p>
+                <div className="text-right mb-6">
+                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">{t.preparedBy}</p>
+                  <p className="font-bold text-gray-900 text-sm">{creator.full_name}</p>
                   {creator.title && <p className="text-gray-600">{creator.title}</p>}
-                  <div className="mt-1 text-xs text-gray-500">
+                  <div className="mt-1 text-gray-500 space-y-0.5">
                     {creator.email && <p>{creator.email}</p>}
                     {creator.phone && <p>{creator.phone}</p>}
                   </div>
                 </div>
               )}
               
-              <div className="w-48 border-t border-gray-400 pt-2 text-center mt-8">
-                <p className="text-xs text-gray-400 font-bold uppercase">Onay / İmza / Kaşe</p>
+              <div className="w-40 border-t border-gray-400 pt-2 text-center mt-4">
+                <p className="text-[9px] text-gray-400 font-bold uppercase">Onay / İmza / Kaşe</p>
               </div>
             </div>
 
@@ -389,11 +374,10 @@ export default function QuoteDetailPage() {
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 15mm !important; /* Yazıcı kenar boşluğu */
+            padding: 10mm 15mm !important; /* Üst/Alt 10mm, Yanlar 15mm */
             box-shadow: none !important;
             border: none !important;
           }
-          /* Arka plan grafiklerini (renkli şeritler, gri kutular) yazdır */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
