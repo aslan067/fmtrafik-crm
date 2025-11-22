@@ -101,6 +101,14 @@ export default function QuoteDetailPage() {
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
   const symbol = currencySymbols[quote?.currency || 'TRY']
 
+  // Metin kısaltma fonksiyonu
+  const truncateText = (text, maxLength = 30) => {
+    if (!text) return ''
+    const str = String(text)
+    if (str.length <= maxLength) return str
+    return str.substring(0, maxLength) + '...'
+  }
+
   // --- Şablon Dil Ayarları ---
   const isEn = quote?.template_code !== 'standard_tr'
   const t = {
@@ -181,20 +189,18 @@ export default function QuoteDetailPage() {
       {/* --- BELGE GÖRÜNTÜLEME ALANI --- */}
       <div className="flex-1 overflow-auto py-8 px-4 print:p-0 print:overflow-visible print:block">
         
-        {/* A4 KAĞIT KONTEYNERI (Optimize Edilmiş) */}
+        {/* A4 KAĞIT KONTEYNERI */}
         <div 
           id="quote-document"
           className="mx-auto bg-white shadow-2xl print:shadow-none max-w-[210mm] min-h-[297mm] p-[10mm] relative text-xs text-gray-800 print:w-full print:max-w-none print:min-h-0 font-sans leading-tight"
         >
-          {/* --- HEADER (Compact & Logo Büyütüldü) --- */}
+          {/* --- HEADER --- */}
           <div className="flex justify-between items-end border-b-2 border-gray-800 pb-4 mb-6">
             <div className="flex items-center gap-6">
               {company?.logo_url && (
-                // Logo BÜYÜTÜLDÜ (h-12 -> h-24)
                 <img src={company.logo_url} alt="Logo" className="h-24 w-auto object-contain" />
               )}
               <div>
-                {/* Şirket İsmi KÜÇÜLTÜLDÜ (text-lg -> text-base) */}
                 <h1 className="font-bold text-base text-gray-900 uppercase tracking-tight">{company?.name}</h1>
                 <div className="text-[10px] text-gray-500 space-y-0.5 mt-1">
                   <p>{company?.address}</p>
@@ -217,8 +223,8 @@ export default function QuoteDetailPage() {
             </div>
           </div>
 
-          {/* --- MÜŞTERİ BİLGİLERİ (Ara Boşluk Kaldırıldı) --- */}
-          <div className="flex justify-between mb-4 gap-8 items-start">
+          {/* --- MÜŞTERİ BİLGİLERİ --- */}
+          <div className="flex justify-between mb-6 gap-8 items-start">
             <div className="flex-1">
               <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.to}</h3>
               <p className="font-bold text-base text-gray-900">{customer?.name}</p>
@@ -239,8 +245,9 @@ export default function QuoteDetailPage() {
             )}
           </div>
 
+          {/* KONU ALANI KALDIRILDI */}
 
-          {/* --- TABLO (Optimize Edilmiş) --- */}
+          {/* --- TABLO (Optimize Edilmiş ve Sıkıştırılmış) --- */}
           <table className="w-full mb-6 border-collapse">
             <thead>
               <tr className="border-b-2 border-gray-800 text-[10px] uppercase font-bold text-gray-600 bg-gray-50">
@@ -256,10 +263,10 @@ export default function QuoteDetailPage() {
             <tbody className="text-xs">
               {items.map((item, i) => (
                 <tr key={i} className="border-b border-gray-200 break-inside-avoid">
-                  <td className="py-1.5 px-2 text-center text-gray-500 align-top">{i + 1}</td>
-                  <td className="py-1.5 px-2">
-                    <div className="flex gap-2 items-start">
-                      {/* Ürün Görseli Büyütüldü ve Hizalandı */}
+                  <td className="py-2 px-2 text-center text-gray-500 align-top">{i + 1}</td>
+                  <td className="py-2 px-2">
+                    <div className="flex gap-3 items-start">
+                      {/* Ürün Görseli Optimize Edildi */}
                       {quote.show_product_images && item.products?.image_url && (
                         <img 
                           src={item.products.image_url} 
@@ -272,33 +279,36 @@ export default function QuoteDetailPage() {
                         {item.products?.product_code && (
                           <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>
                         )}
-                        {/* Teknik özellikler */}
+                        {/* Teknik Özellikler (Grid Yapısı ve Kısıtlama) */}
                         {quote.show_specifications && item.products?.specifications && (
-                          <div className="text-[9px] text-gray-500 mt-1 leading-tight">
-                            {Object.entries(item.products.specifications).slice(0,4).map(([k,v]) => (
-                              <span key={k} className="mr-2 inline-block text-gray-400"><b className="text-gray-500">{k}:</b> {v}</span>
+                          <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 max-w-[300px]">
+                            {Object.entries(item.products.specifications).slice(0,6).map(([k,v]) => (
+                              <div key={k} className="text-[9px] text-gray-500 flex gap-1 overflow-hidden">
+                                <span className="font-semibold text-gray-400">{k}:</span>
+                                <span className="truncate" title={v}>{truncateText(v, 25)}</span>
+                              </div>
                             ))}
                           </div>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="py-1.5 px-2 text-center font-medium whitespace-nowrap align-top pt-3">{item.quantity} {item.products?.unit}</td>
-                  <td className="py-1.5 px-2 text-right font-mono align-top pt-3">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
+                  <td className="py-2 px-2 text-center font-medium whitespace-nowrap align-top pt-3">{item.quantity} {item.products?.unit}</td>
+                  <td className="py-2 px-2 text-right font-mono align-top pt-3">{symbol}{parseFloat(item.list_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
                   
                   {quote.discount_amount > 0 && (
-                    <td className="py-1.5 px-2 text-center text-red-600 text-[10px] align-top pt-3">
+                    <td className="py-2 px-2 text-center text-red-600 text-[10px] align-top pt-3">
                       {item.discount_percentage > 0 ? `%${item.discount_percentage}` : '-'}
                     </td>
                   )}
                   
                   {items.some(i => i.tax_rate > 0) && (
-                    <td className="py-1.5 px-2 text-center text-gray-500 text-[10px] align-top pt-3">
+                    <td className="py-2 px-2 text-center text-gray-500 text-[10px] align-top pt-3">
                       {item.tax_rate > 0 ? `%${item.tax_rate}` : '-'}
                     </td>
                   )}
                   
-                  <td className="py-1.5 px-2 text-right font-bold text-gray-900 align-top pt-3">
+                  <td className="py-2 px-2 text-right font-bold text-gray-900 align-top pt-3">
                     {symbol}{parseFloat(item.total_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}
                   </td>
                 </tr>
@@ -388,13 +398,6 @@ export default function QuoteDetailPage() {
       {/* --- PRINT STYLE OVERRIDES --- */}
       <style jsx global>{`
         @media print {
-          /* Reset */
-          *, *:before, *:after {
-            box-shadow: none !important;
-            text-shadow: none !important;
-          }
-          
-          /* Hide Everything */
           body {
             visibility: hidden;
             background-color: white !important;
@@ -404,13 +407,9 @@ export default function QuoteDetailPage() {
             margin: 0 !important;
             padding: 0 !important;
           }
-
-          /* Show Quote */
           #quote-document, #quote-document * {
             visibility: visible;
           }
-
-          /* Position Quote */
           #quote-document {
             position: absolute;
             left: 0;
@@ -419,27 +418,14 @@ export default function QuoteDetailPage() {
             max-width: none !important;
             min-height: 0 !important;
             margin: 0 !important;
-            padding: 5mm !important; /* MİNİMUM KENAR BOŞLUĞU */
+            padding: 5mm !important; /* Minimum Kenar Boşluğu */
+            box-shadow: none !important;
             border: none !important;
             background-color: white !important;
           }
-
-          /* Remove Defaults */
-          @page {
-            margin: 0; /* Tarayıcı marginini sıfırla */
-            size: auto;
-          }
-          
-          /* Container Fixes */
-          .min-h-screen {
-            min-height: 0 !important;
-            height: auto !important;
-            display: block !important;
-          }
-          
-          .flex-1 {
-            flex: none !important;
-            overflow: visible !important;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
