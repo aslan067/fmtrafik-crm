@@ -239,12 +239,6 @@ export default function QuoteDetailPage() {
             )}
           </div>
 
-          {/* --- KONU --- */}
-          {quote.title && (
-            <div className="mb-4 bg-gray-50 p-1.5 rounded border border-gray-100 text-center font-semibold text-gray-800 text-sm">
-              {quote.title}
-            </div>
-          )}
 
           {/* --- TABLO (Optimize Edilmiş) --- */}
           <table className="w-full mb-6 border-collapse">
