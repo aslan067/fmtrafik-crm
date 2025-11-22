@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import { 
   Save, Plus, Trash2, Search, Calculator, FileText, 
   CreditCard, Globe, Image as ImageIcon, TrendingUp, AlertCircle, 
-  Check, RefreshCw, User, Copy, ChevronDown, Settings, Ruler
+  Check, RefreshCw, User, Copy, ChevronDown, Settings, Ruler, Lock, Unlock, AlertTriangle
 } from 'lucide-react'
 
 export default function NewQuotePage() {
@@ -59,7 +59,8 @@ export default function NewQuotePage() {
       unit_price: 0, 
       total_price: 0, 
       cost_price: 0, 
-      original_currency: 'TRY' 
+      original_currency: 'TRY',
+      is_price_editable: true // Başlangıçta (ürün seçilmediği için) düzenlenebilir
     }
   ])
 
@@ -160,22 +161,40 @@ export default function NewQuotePage() {
     if (!price) return 0
     if (fromCurrency === toCurrency) return price
     const exchangeRate = parseFloat(rate) || 1
+    
     if (fromCurrency !== 'TRY' && toCurrency === 'TRY') return price * exchangeRate
     if (fromCurrency === 'TRY' && toCurrency !== 'TRY') return price / exchangeRate
+    
     return price 
   }
 
   const recalculateAllItems = () => {
     const newItems = items.map(item => {
+      // Eğer ürün seçilmemişse veya fiyat manuel kilitli değilse hesaplama yap
       if (!item.product_id) return item
-      const convertedList = convertPrice(item.original_list_price || 0, item.original_currency || 'TRY', formData.currency, formData.exchange_rate)
-      const convertedCost = convertPrice(item.original_cost_price || 0, item.original_currency || 'TRY', formData.currency, formData.exchange_rate)
-      const unitPrice = convertedList * (1 - (item.discount_percentage || 0) / 100)
+
+      const convertedListPrice = convertPrice(
+        item.original_list_price || 0, 
+        item.original_currency || 'TRY', 
+        formData.currency, 
+        formData.exchange_rate
+      )
+
+      const convertedCostPrice = convertPrice(
+        item.original_cost_price || 0,
+        item.original_currency || 'TRY',
+        formData.currency,
+        formData.exchange_rate
+      )
+
+      // Eğer manuel fiyat modu kapalıysa liste fiyatını güncelle
+      const listPriceToUse = item.is_price_editable ? item.list_price : convertedListPrice
+      const unitPrice = listPriceToUse * (1 - (item.discount_percentage || 0) / 100)
       
       return {
         ...item,
-        list_price: convertedList,
-        cost_price: convertedCost,
+        list_price: listPriceToUse,
+        cost_price: convertedCostPrice,
         unit_price: unitPrice,
         total_price: unitPrice * (item.quantity || 1)
       }
@@ -183,30 +202,16 @@ export default function NewQuotePage() {
     setItems(newItems)
   }
 
+  const togglePriceLock = (index) => {
+    const newItems = [...items]
+    newItems[index].is_price_editable = !newItems[index].is_price_editable
+    setItems(newItems)
+  }
+
   const handleItemChange = (index, field, value) => {
     const newItems = [...items]
     const item = newItems[index]
-    
-    if (field === 'unit_price') {
-      // Net fiyat girildi -> İskontoyu hesapla
-      const newListPrice = item.list_price || 0
-      const newUnitPrice = parseFloat(value) || 0
-      item.unit_price = newUnitPrice
-      
-      if (newListPrice > 0) {
-        const discount = ((newListPrice - newUnitPrice) / newListPrice) * 100
-        item.discount_percentage = parseFloat(discount.toFixed(2))
-      } else {
-        item.discount_percentage = 0
-      }
-    } else if (field === 'discount_percentage') {
-      // İskonto girildi -> Net fiyatı hesapla
-      const discount = parseFloat(value) || 0
-      item.discount_percentage = discount
-      item.unit_price = (item.list_price || 0) * (1 - discount / 100)
-    } else {
-      item[field] = value
-    }
+    item[field] = value
 
     if (field === 'product_id') {
       const product = products.find(p => p.id === value)
@@ -217,10 +222,45 @@ export default function NewQuotePage() {
         item.original_cost_price = parseFloat(product.our_cost_price)
         item.tax_rate = formData.default_tax_rate
         
-        item.list_price = convertPrice(item.original_list_price, item.original_currency, formData.currency, formData.exchange_rate)
-        item.cost_price = convertPrice(item.original_cost_price, item.original_currency, formData.currency, formData.exchange_rate)
+        const convertedList = convertPrice(item.original_list_price, item.original_currency, formData.currency, formData.exchange_rate)
+        const convertedCost = convertPrice(item.original_cost_price, item.original_currency, formData.currency, formData.exchange_rate)
         
+        item.list_price = convertedList
+        item.cost_price = convertedCost
         item.unit_price = item.list_price
+        item.discount_percentage = 0
+        
+        // OTOMATİK KİLİT MANTIĞI:
+        // Eğer ürünün fiyatı 0 ise veya yoksa, manuel girişi aç. Aksi takdirde kilitle.
+        item.is_price_editable = (convertedList <= 0)
+      } else {
+        // Ürün seçimi kaldırıldıysa manuel girişe izin ver
+        item.is_price_editable = true
+      }
+    }
+
+    // Liste fiyatı manuel değiştiyse (kilit açıkken)
+    if (field === 'list_price') {
+      const listPrice = parseFloat(value) || 0
+      item.unit_price = listPrice * (1 - (item.discount_percentage || 0) / 100)
+    }
+
+    // İskonto değiştiyse
+    if (field === 'discount_percentage') {
+      const discount = parseFloat(value) || 0
+      item.discount_percentage = discount
+      item.unit_price = (item.list_price || 0) * (1 - discount / 100)
+    }
+
+    // Net fiyat değiştiyse
+    if (field === 'unit_price') {
+      const newListPrice = item.list_price || 0
+      const newUnitPrice = parseFloat(value) || 0
+      item.unit_price = newUnitPrice
+      if (newListPrice > 0) {
+        const discount = ((newListPrice - newUnitPrice) / newListPrice) * 100
+        item.discount_percentage = parseFloat(discount.toFixed(2))
+      } else {
         item.discount_percentage = 0
       }
     }
@@ -263,7 +303,6 @@ export default function NewQuotePage() {
     const generalDiscountAmount = subtotal * (parseFloat(formData.discount_percentage) || 0) / 100
     const subtotalAfterDiscount = subtotal - generalDiscountAmount
     
-    // KDV Hesaplama (Vergi matrahı üzerinden)
     const taxMultiplier = subtotal > 0 ? subtotalAfterDiscount / subtotal : 1
     const finalTaxAmount = totalTax * taxMultiplier
     
@@ -283,12 +322,20 @@ export default function NewQuotePage() {
 
     try {
       if (!formData.customer_id) throw new Error('Lütfen bir müşteri seçin')
-      if (items.length === 0 || !items[0].product_id) throw new Error('En az bir ürün eklemelisiniz')
+      if (items.length === 0 || (items.length === 1 && !items[0].product_id && !items[0].description)) throw new Error('En az bir ürün eklemelisiniz')
+
+      // Fiyatı 0 olan ürün kontrolü
+      const zeroPriceItems = items.filter(i => (i.unit_price <= 0 && i.total_price <= 0))
+      if (zeroPriceItems.length > 0) {
+        if(!confirm('Bazı ürünlerin fiyatı 0.00 olarak görünüyor. Yine de kaydetmek istiyor musunuz?')) {
+          setLoading(false)
+          return
+        }
+      }
 
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // --- NUMARA ÜRETME (YENİ RPC) ---
       const { data: quoteNumber, error: rpcError } = await supabase
         .rpc('generate_quote_number', { p_company_id: profile.company_id })
 
@@ -300,7 +347,7 @@ export default function NewQuotePage() {
           company_id: profile.company_id,
           customer_id: formData.customer_id,
           contact_id: formData.contact_id || null,
-          quote_number: quoteNumber, // Otomatik üretilen
+          quote_number: quoteNumber,
           title: formData.title || `Teklif #${quoteNumber}`,
           status: 'draft',
           template_code: formData.template_code,
@@ -326,7 +373,7 @@ export default function NewQuotePage() {
 
       const quoteItems = items.map((item, idx) => ({
         quote_id: quote.id,
-        product_id: item.product_id,
+        product_id: item.product_id || null,
         description: item.description,
         quantity: item.quantity,
         list_price: item.list_price,
@@ -355,6 +402,7 @@ export default function NewQuotePage() {
       <div className="p-6 min-h-screen bg-gray-50/50">
         <div className="max-w-[1600px] mx-auto">
           
+          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Yeni Teklif Oluştur</h1>
@@ -384,6 +432,8 @@ export default function NewQuotePage() {
             
             {/* SOL KOLON (3/12) */}
             <div className="xl:col-span-3 space-y-6">
+              
+              {/* Müşteri */}
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900">Müşteri Bilgileri</h3>
                 <div>
@@ -416,6 +466,7 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
+              {/* Para & Banka */}
               <div className="card space-y-4 bg-blue-50/50 border-blue-100">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2"><CreditCard className="w-4 h-4"/> Para Birimi & Kur</h3>
                 <div>
@@ -428,7 +479,7 @@ export default function NewQuotePage() {
                 </div>
                 <div>
                   <label className="label-text flex justify-between">
-                    <span>Kur</span>
+                    <span>Kur (Exchange Rate)</span>
                     <span className="text-blue-600 cursor-pointer" onClick={()=>setFormData({...formData, exchange_rate: 1})}>Sıfırla</span>
                   </label>
                   <div className="relative">
@@ -437,6 +488,7 @@ export default function NewQuotePage() {
                   </div>
                 </div>
                 
+                {/* ÇOKLU BANKA SEÇİMİ */}
                 <div className="relative" ref={bankDropdownRef}>
                   <label className="label-text mb-1">Banka Hesapları</label>
                   <button 
@@ -474,6 +526,7 @@ export default function NewQuotePage() {
                 </div>
               </div>
 
+              {/* Şablon & Görünüm */}
               <div className="card space-y-4">
                 <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Settings className="w-4 h-4"/> Şablon & Görünüm</h3>
                 <div className="grid grid-cols-1 gap-2">
@@ -497,6 +550,7 @@ export default function NewQuotePage() {
                   </label>
                 </div>
               </div>
+
             </div>
 
             {/* SAĞ KOLON (9/12) */}
@@ -515,7 +569,7 @@ export default function NewQuotePage() {
                       />
                       <span className="text-xs font-bold">%</span>
                     </div>
-                    <button type="button" onClick={() => setItems([...items, { id: Date.now(), product_id: '', quantity: 1, list_price:0, discount_percentage:0, unit_price:0, total_price:0, tax_rate: formData.default_tax_rate }])} className="btn-secondary text-sm flex items-center gap-2">
+                    <button type="button" onClick={() => setItems([...items, { id: Date.now(), product_id: '', quantity: 1, list_price:0, discount_percentage:0, unit_price:0, total_price:0, tax_rate: formData.default_tax_rate, is_price_editable: true }])} className="btn-secondary text-sm flex items-center gap-2">
                       <Plus className="w-4 h-4"/> Satır Ekle
                     </button>
                   </div>
@@ -539,9 +593,10 @@ export default function NewQuotePage() {
                       {items.map((item, index) => {
                         const isProfitable = item.unit_price > (item.cost_price || 0)
                         const isCritical = item.unit_price > 0 && item.unit_price < (item.cost_price * 1.1)
+                        const isZeroPrice = item.list_price <= 0 && item.product_id
 
                         return (
-                          <tr key={item.id} className="group hover:bg-blue-50/50 transition-colors">
+                          <tr key={item.id} className={`group transition-colors ${isZeroPrice ? 'bg-red-50' : 'hover:bg-blue-50/50'}`}>
                             <td className="p-2 relative">
                               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r ${isProfitable ? (isCritical ? 'bg-yellow-400' : 'bg-green-500') : 'bg-red-500'}`} title="Kârlılık Durumu"></div>
                               <select value={item.product_id} onChange={(e)=>handleItemChange(index, 'product_id', e.target.value)} className="input-field mb-1 text-sm font-medium">
@@ -551,12 +606,36 @@ export default function NewQuotePage() {
                               <input type="text" value={item.description} onChange={(e)=>handleItemChange(index, 'description', e.target.value)} className="input-field text-xs bg-transparent border-transparent focus:bg-white focus:border-blue-500 px-1 text-gray-500" placeholder="Açıklama..." />
                             </td>
                             <td className="p-2"><input type="number" value={item.quantity} onChange={(e)=>handleItemChange(index, 'quantity', e.target.value)} className="input-field text-center" min="1" /></td>
-                            {/* step="0.01" EKLENDİ */}
-                            <td className="p-2"><input type="number" value={item.list_price} onChange={(e)=>handleItemChange(index, 'list_price', e.target.value)} className="input-field text-right text-gray-500" step="0.01" disabled /></td>
-                            {/* step="0.01" EKLENDİ */}
+                            
+                            {/* AKILLI FİYAT ALANI */}
+                            <td className="p-2 relative group/price">
+                              <div className="relative">
+                                <input 
+                                  type="number" 
+                                  value={item.list_price} 
+                                  onChange={(e)=>handleItemChange(index, 'list_price', e.target.value)} 
+                                  className={`input-field text-right pr-8 ${item.is_price_editable ? 'bg-white border-blue-300 text-blue-700' : 'bg-gray-50 text-gray-500'}`} 
+                                  step="0.01" 
+                                  disabled={!item.is_price_editable} 
+                                />
+                                <button 
+                                  type="button"
+                                  onClick={() => togglePriceLock(index)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                                  title={item.is_price_editable ? "Fiyatı Kilitle" : "Kilidi Aç ve Düzenle"}
+                                >
+                                  {item.is_price_editable ? <Unlock className="w-3 h-3"/> : <Lock className="w-3 h-3"/>}
+                                </button>
+                              </div>
+                              {isZeroPrice && (
+                                <div className="absolute -top-2 right-0 flex items-center gap-1 bg-red-100 text-red-600 text-[10px] px-1 rounded">
+                                  <AlertTriangle className="w-3 h-3"/> Fiyat Giriniz
+                                </div>
+                              )}
+                            </td>
+
                             <td className="p-2"><input type="number" value={item.discount_percentage} onChange={(e)=>handleItemChange(index, 'discount_percentage', e.target.value)} className="input-field text-center text-red-600 font-medium" min="0" max="100" step="0.01" /></td>
                             <td className="p-2">
-                              {/* step="0.01" EKLENDİ */}
                               <input type="number" value={item.unit_price} onChange={(e)=>handleItemChange(index, 'unit_price', e.target.value)} className="input-field text-right font-bold text-gray-800" step="0.01" />
                             </td>
                             <td className="p-2"><input type="number" value={item.tax_rate} onChange={(e)=>handleItemChange(index, 'tax_rate', e.target.value)} className="input-field text-center text-xs" /></td>
