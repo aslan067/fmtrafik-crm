@@ -8,7 +8,7 @@ import {
   ArrowLeft, Save, Box, BarChart2, Globe, 
   RefreshCw, Calculator, Truck, Briefcase, 
   Tag, AlertCircle, TrendingUp, DollarSign, Percent,
-  Image as ImageIcon, Layers, FileText, Eye
+  Image as ImageIcon, Layers, FileText, Wand2, Eye
 } from 'lucide-react'
 
 export default function ProductDetailPage() {
@@ -17,14 +17,14 @@ export default function ProductDetailPage() {
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('general') // general, b2b, ecommerce, analytics
+  const [activeTab, setActiveTab] = useState('general') 
   
-  // Veri Setleri
+  // VERİ SETLERİ (Veritabanından gelen referans tablolar)
   const [channels, setChannels] = useState([]) 
   const [productGroups, setProductGroups] = useState([])
   const [suppliers, setSuppliers] = useState([])
   
-  // Form Verisi
+  // ÜRÜN STATE
   const [product, setProduct] = useState({
     name: '',
     product_code: '',
@@ -45,22 +45,22 @@ export default function ProductDetailPage() {
     supplier_id: '',
     product_group_id: '',
 
-    // Fiyatlandırma (DB İsimleri)
+    // Fiyatlandırma (DB Sütunları)
     pricing_method: 'discount',       // 'net' veya 'discount'
     supplier_list_price: '',          // Tedarikçi Giriş
     supplier_discount_percentage: '', // Alış İskontosu
     price_multiplier: '1.80',         // Çarpan
-    dealer_list_price: '',            // Bayi Satış Fiyatı (Bizim Listemiz)
+    dealer_list_price: '',            // Bayi Satış Fiyatı (Liste)
 
     // Pazar Yeri
     market_data: {} 
   })
 
-  // Hesaplama Sonuçları (State'e kaydetmeye gerek yok, anlık hesaplanır)
+  // SİMÜLASYON STATE (Anlık hesaplanan görsel veriler)
   const [simulation, setSimulation] = useState({
     netCost: 0,
-    dealerDiscountRate: 0,
-    effectiveSalesPrice: 0,
+    dealerDiscountRate: 0, // Ürün grubundan gelen
+    effectiveSalesPrice: 0, // Bayi iskontosu düşülmüş
     profit: 0,
     margin: 0
   })
@@ -73,13 +73,20 @@ export default function ProductDetailPage() {
   }, [params.id])
 
   // ============================================================================================
-  //  1. HESAPLAMA MOTORU (Yeni Ürün Ekle Sayfası ile BİREBİR AYNI)
+  //  1. HESAPLAMA MOTORU (REFERANS TABLOLARI KULLANARAK)
   // ============================================================================================
   
-  // Seçili Grubu ve Tedarikçiyi Bul
-  const selectedGroup = useMemo(() => productGroups.find(g => g.id === product.product_group_id), [product.product_group_id, productGroups])
-  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === product.supplier_id), [product.supplier_id, suppliers])
+  // Seçili Grubu ve Tedarikçiyi REFERANS LİSTELERİNDEN Buluyoruz
+  // Bu kısım çok önemli: Veritabanındaki kuralları buradan okuyoruz.
+  const selectedGroupData = useMemo(() => {
+    return productGroups.find(g => g.id === product.product_group_id)
+  }, [product.product_group_id, productGroups])
 
+  const selectedSupplierData = useMemo(() => {
+    return suppliers.find(s => s.id === product.supplier_id)
+  }, [product.supplier_id, suppliers])
+
+  // Hesaplama Tetikleyicisi
   useEffect(() => {
     runCalculation()
   }, [
@@ -88,38 +95,41 @@ export default function ProductDetailPage() {
     product.price_multiplier, 
     product.dealer_list_price,
     product.pricing_method,
-    selectedGroup,
-    selectedSupplier
+    selectedGroupData, // Grup değişince oran değişeceği için burası tetiklenmeli
   ])
 
   const runCalculation = () => {
     // Sayısal Değerleri Al
     const sListPrice = parseFloat(product.supplier_list_price) || 0
     const sDiscount = parseFloat(product.supplier_discount_percentage) || 0
-    const multiplier = parseFloat(product.price_multiplier) || 0
     const currentDealerPrice = parseFloat(product.dealer_list_price) || 0
 
-    // 1. Net Maliyet Hesapla
+    // 1. NET MALİYET HESABI
     let valNetCost = 0
+    // Burada product.pricing_method kullanıyoruz ama aslında tedarikçiden de teyit edebiliriz
     if (product.pricing_method === 'net') {
-      valNetCost = sListPrice
+      valNetCost = sListPrice // Net sistemde liste fiyatı = net maliyettir
     } else {
       valNetCost = sListPrice * (1 - (sDiscount / 100))
     }
 
-    // 2. Simülasyon Verilerini Hesapla (Görsel Kart İçin)
-    const dealerDiscountRate = parseFloat(selectedGroup?.dealer_discount || 0)
+    // 2. SİMÜLASYON (KAR HESABI)
+    // Ürün Grubundan gelen "dealer_discount" oranını alıyoruz.
+    const groupDealerDiscount = parseFloat(selectedGroupData?.dealer_discount || 0)
     
-    // Efektif Satış (Bayiye iskontosunu düştükten sonra cebimize giren)
-    const effectiveSalesPrice = currentDealerPrice * (1 - (dealerDiscountRate / 100))
+    // Efektif Satış (Bayiye iskontosunu düştükten sonra cebimize giren para)
+    // Formül: Liste Fiyatı * (1 - Grup Bayi İskontosu)
+    const effectiveSalesPrice = currentDealerPrice * (1 - (groupDealerDiscount / 100))
     
-    // Kar ve Marj
+    // Kar = Cebimize Giren - Net Maliyet
     const profit = effectiveSalesPrice - valNetCost
+    
+    // Kar Marjı = (Kar / Cebimize Giren) * 100
     const margin = effectiveSalesPrice > 0 ? (profit / effectiveSalesPrice) * 100 : 0
 
     setSimulation({
       netCost: valNetCost,
-      dealerDiscountRate,
+      dealerDiscountRate: groupDealerDiscount,
       effectiveSalesPrice,
       profit,
       margin
@@ -127,56 +137,56 @@ export default function ProductDetailPage() {
   }
 
   // ============================================================================================
-  //  2. INPUT CHANGE HANDLERS (OTOMATİK FİYAT GÜNCELLEME)
+  //  2. INPUT VE SEÇİM GÜNCELLEMELERİ
   // ============================================================================================
 
-  // Tedarikçi Değişimi
+  // Tedarikçi Değişimi: Tedarikçi tablosundaki varsayılanları çeker
   const handleSupplierChange = (supplierId) => {
     const s = suppliers.find(x => x.id === supplierId)
-    // Tedarikçi değişince varsayılanları yükle
+    
+    // State güncelle
     setProduct(prev => ({
       ...prev,
       supplier_id: supplierId,
+      // Tedarikçinin varsayılan çalışma tipini ve iskontosunu getir
       pricing_method: s?.working_method === 'net' ? 'net' : 'discount',
       supplier_discount_percentage: s?.default_discount || 0
     }))
-    // Fiyatı yeniden hesaplaması için useEffect tetiklenecek
+    // Not: Fiyat hesaplaması useEffect içinde otomatik tetiklenecek
   }
 
-  // Grup Değişimi
+  // Grup Değişimi: Grubun çarpanını çeker
   const handleGroupChange = (groupId) => {
     const g = productGroups.find(x => x.id === groupId)
+    
     setProduct(prev => ({
       ...prev,
       product_group_id: groupId,
-      // Gruptan gelen çarpan varsa al, yoksa mevcut kalsın
+      // Grubun varsayılan çarpanı varsa getir, yoksa eskisi kalsın
       price_multiplier: g?.profit_multiplier || prev.price_multiplier
     }))
   }
 
-  // Fiyat/Oran Değişimi
+  // Fiyat veya Oran Değişimi
   const handlePriceInputChange = (field, value) => {
     const newProduct = { ...product, [field]: value }
     
-    // Eğer maliyet kalemleri değişiyorsa, Satış Fiyatını (Dealer List Price) otomatik güncelle
-    // Ama kullanıcı doğrudan Dealer List Price'ı değiştiriyorsa dokunma.
+    // Otomatik Bayi Fiyatı Hesaplama Mantığı
+    // Eğer kullanıcı 'dealer_list_price'ı elle değiştirmiyorsa, biz hesaplarız.
     if (field !== 'dealer_list_price') {
       
       const sListPrice = field === 'supplier_list_price' ? parseFloat(value) : parseFloat(product.supplier_list_price || 0)
-      const sDiscount = field === 'supplier_discount_percentage' ? parseFloat(value) : parseFloat(product.supplier_discount_percentage || 0)
       const multiplier = field === 'price_multiplier' ? parseFloat(value) : parseFloat(product.price_multiplier || 1.8)
-      const method = field === 'pricing_method' ? value : product.pricing_method
+      const method = field === 'pricing_method' ? value : product.pricing_method // State güncellenmeden önceki değer gelebilir diye kontrol
 
       let suggestedPrice = 0
 
-      // MANTIK: NewProductPage ile Birebir Aynı
       if (method === 'discount') {
-        // İskontolu sistemde Bayi Fiyatı = Tedarikçi Liste Fiyatı
+        // İskontolu Yöntem: Bayi Fiyatı = Tedarikçi Liste Fiyatı
         suggestedPrice = sListPrice
       } else {
-        // Net sistemde Bayi Fiyatı = Net Maliyet * Çarpan
-        const netCost = sListPrice // Net modunda iskonto yok, liste fiyatı direkt maliyettir
-        suggestedPrice = netCost * multiplier
+        // Net Yöntem: Bayi Fiyatı = Net Maliyet (yani Liste Fiyatı) * Çarpan
+        suggestedPrice = sListPrice * multiplier
       }
 
       newProduct.dealer_list_price = Number(suggestedPrice.toFixed(2))
@@ -185,11 +195,8 @@ export default function ProductDetailPage() {
     setProduct(newProduct)
   }
 
-  // Yöntem (Radio) Değişimi
+  // Çalışma Yöntemi (Radio) Değişimi
   const handleMethodChange = (newMethod) => {
-    const newProduct = { ...product, pricing_method: newMethod }
-    
-    // Yöntem değişince fiyatı hemen tekrar hesapla
     const sListPrice = parseFloat(product.supplier_list_price || 0)
     const multiplier = parseFloat(product.price_multiplier || 1.8)
 
@@ -200,12 +207,15 @@ export default function ProductDetailPage() {
       suggestedPrice = sListPrice * multiplier
     }
     
-    newProduct.dealer_list_price = Number(suggestedPrice.toFixed(2))
-    setProduct(newProduct)
+    setProduct(prev => ({
+      ...prev,
+      pricing_method: newMethod,
+      dealer_list_price: Number(suggestedPrice.toFixed(2))
+    }))
   }
 
   // ============================================================================================
-  //  3. VERİ YÜKLEME & KAYDETME
+  //  3. VERİ YÜKLEME & KAYIT
   // ============================================================================================
 
   async function loadInitialData() {
@@ -213,7 +223,7 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // Paralel Veri Çekimi
+      // Tüm referans tablolarını eksiksiz çekiyoruz
       const [channelsRes, groupsRes, suppliersRes] = await Promise.all([
         supabase.from('sales_channels').select('*').eq('company_id', profile.company_id),
         supabase.from('product_groups').select('*').eq('company_id', profile.company_id), 
@@ -229,8 +239,6 @@ export default function ProductDetailPage() {
         const { data: prod, error } = await supabase.from('products').select('*').eq('id', params.id).single()
         if (error) throw error
         
-        // Veri Eşleştirme
-        // Eski kayıtlarda pricing_method null ise tahminde bulun
         let detectedMethod = prod.pricing_method || 'discount'
         if (!prod.pricing_method && (!prod.supplier_discount_percentage || prod.supplier_discount_percentage === 0)) {
            detectedMethod = 'net'
@@ -251,7 +259,6 @@ export default function ProductDetailPage() {
           product_group_id: prod.product_group_id || ''
         })
 
-        // Satış İstatistikleri
         const { data: sales } = await supabase.from('sale_items').select('quantity, total_price, created_at').eq('product_id', params.id)
         if (sales && sales.length > 0) {
           const tSold = sales.reduce((a, c) => a + Number(c.quantity), 0)
@@ -428,6 +435,7 @@ export default function ProductDetailPage() {
                   </div>
                   <div><label className="label-text">Görsel Bağlantısı (URL)</label><input type="text" className="input-field text-xs" value={product.image_url || ''} onChange={(e) => setProduct({...product, image_url: e.target.value})}/></div>
                </div>
+               
                <div className="card space-y-4">
                   <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Layers className="w-4 h-4"/> Durum</h3>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
@@ -451,25 +459,37 @@ export default function ProductDetailPage() {
              <div className="card space-y-6 border-blue-100 bg-blue-50/30">
                 <div className="flex items-center gap-3 border-b border-blue-200 pb-3">
                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Briefcase className="w-6 h-6"/></div>
-                   <div><h3 className="font-bold text-blue-900">Tedarik & Fiyatlandırma</h3><p className="text-xs text-blue-700">Tedarikçi bilgileri ve maliyet yapısı.</p></div>
+                   <div><h3 className="font-bold text-blue-900">Tedarik & Fiyatlandırma</h3><p className="text-xs text-blue-700">Tedarikçi bilgileri ve otomatik maliyet yapısı.</p></div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                      <label className="label-text">Ana Tedarikçi</label>
-                     <select className="input-field" value={product.supplier_id} onChange={(e) => handleSupplierChange(e.target.value)}>
+                     <select 
+                       className="input-field" 
+                       value={product.supplier_id} 
+                       onChange={(e) => handleSupplierChange(e.target.value)}
+                     >
                        <option value="">Seçiniz...</option>
                        {suppliers.map(s => (
-                         <option key={s.id} value={s.id}>{s.name} ({s.working_method === 'net' ? 'Net' : 'İskontolu'})</option>
+                         <option key={s.id} value={s.id}>
+                           {s.name} ({s.working_method === 'net' ? 'Net' : 'İskontolu'})
+                         </option>
                        ))}
                      </select>
                   </div>
                   <div className="col-span-2">
                      <label className="label-text">Ürün Grubu</label>
-                     <select className="input-field" value={product.product_group_id} onChange={(e) => handleGroupChange(e.target.value)}>
+                     <select 
+                       className="input-field" 
+                       value={product.product_group_id} 
+                       onChange={(e) => handleGroupChange(e.target.value)}
+                     >
                        <option value="">Seçiniz...</option>
                        {productGroups.map(g => (
-                         <option key={g.id} value={g.id}>{g.name} (Bayi İsk: %{g.dealer_discount || 0})</option>
+                         <option key={g.id} value={g.id}>
+                           {g.name} (Bayi İsk: %{g.dealer_discount || 0})
+                         </option>
                        ))}
                      </select>
                   </div>
@@ -491,9 +511,17 @@ export default function ProductDetailPage() {
 
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-blue-100">
                   <div className="col-span-2 md:col-span-1">
-                    <label className="label-text text-blue-800">{product.pricing_method === 'discount' ? 'Tedarikçi Liste Fiyatı' : 'Net Alış Fiyatı'}</label>
+                    <label className="label-text text-blue-800">
+                       {product.pricing_method === 'discount' ? 'Tedarikçi Liste Fiyatı' : 'Net Alış Fiyatı'}
+                    </label>
                     <div className="relative">
-                      <input type="number" className="input-field font-medium" value={product.supplier_list_price} onChange={(e) => handlePriceInputChange('supplier_list_price', e.target.value)} placeholder="0.00"/>
+                      <input 
+                        type="number" 
+                        className="input-field font-medium" 
+                        value={product.supplier_list_price} 
+                        onChange={(e) => handlePriceInputChange('supplier_list_price', e.target.value)}
+                        placeholder="0.00"
+                      />
                       <span className="absolute right-3 top-2 text-gray-400">{symbol}</span>
                     </div>
                   </div>
@@ -502,7 +530,13 @@ export default function ProductDetailPage() {
                     <div className="col-span-2 md:col-span-1">
                       <label className="label-text text-blue-800">İskonto Oranı (%)</label>
                       <div className="relative">
-                        <input type="number" className="input-field" value={product.supplier_discount_percentage} onChange={(e) => handlePriceInputChange('supplier_discount_percentage', e.target.value)} placeholder="0"/>
+                        <input 
+                          type="number" 
+                          className="input-field" 
+                          value={product.supplier_discount_percentage} 
+                          onChange={(e) => handlePriceInputChange('supplier_discount_percentage', e.target.value)}
+                          placeholder="0"
+                        />
                         <span className="absolute right-3 top-2 text-gray-400">%</span>
                       </div>
                     </div>
@@ -511,19 +545,29 @@ export default function ProductDetailPage() {
                   <div className="col-span-2 md:col-span-1">
                     <label className="label-text text-blue-800">Fiyat Çarpanı</label>
                     <input 
-                      type="number" step="0.01" className="input-field" 
+                      type="number" 
+                      step="0.01"
+                      className="input-field" 
                       value={product.price_multiplier} 
                       onChange={(e) => handlePriceInputChange('price_multiplier', e.target.value)}
                       disabled={product.pricing_method === 'discount'}
                       placeholder="1.80"
                     />
-                    <p className="text-[10px] text-gray-500 mt-1">{product.pricing_method === 'discount' ? 'Liste fiyatında çarpan kullanılmaz.' : 'Net maliyet x Çarpan = Bayi Fiyatı'}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      {product.pricing_method === 'discount' ? 'Liste fiyatında çarpan kullanılmaz.' : 'Net maliyet x Çarpan = Bayi Fiyatı'}
+                    </p>
                   </div>
 
                   <div className="col-span-2 md:col-span-1">
                     <label className="label-text text-green-700">Bayi / Katalog Fiyatı</label>
                     <div className="relative">
-                      <input type="number" className="input-field font-bold text-green-700 border-green-300 focus:ring-green-200" value={product.dealer_list_price} onChange={(e) => setProduct({...product, dealer_list_price: e.target.value})} placeholder="0.00"/>
+                      <input 
+                        type="number" 
+                        className="input-field font-bold text-green-700 border-green-300 focus:ring-green-200" 
+                        value={product.dealer_list_price} 
+                        onChange={(e) => setProduct({...product, dealer_list_price: e.target.value})}
+                        placeholder="0.00"
+                      />
                       <span className="absolute right-3 top-2 text-gray-400">{symbol}</span>
                     </div>
                   </div>
@@ -533,9 +577,12 @@ export default function ProductDetailPage() {
              {/* SAĞ KOLON: KÂR SİMÜLASYONU */}
              <div className="space-y-6">
                 <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                  <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4"><Calculator className="w-5 h-5"/> Kar Simülasyonu</h3>
+                  <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4">
+                    <Calculator className="w-5 h-5"/> Kar Simülasyonu
+                  </h3>
 
                   <div className="space-y-4">
+                    
                     {/* Net Maliyet */}
                     <div className="flex justify-between items-center p-3 bg-white rounded border border-gray-200 shadow-sm">
                       <span className="text-sm font-medium text-gray-600">Net Alış Maliyeti</span>
@@ -567,10 +614,21 @@ export default function ProductDetailPage() {
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600">Kar Marjı:</span>
-                        <span className={`font-bold ${simulation.margin < 10 ? 'text-red-600' : 'text-green-600'}`}>%{simulation.margin.toFixed(1)}</span>
+                        <span className={`font-bold ${simulation.margin < 10 ? 'text-red-600' : 'text-green-600'}`}>
+                          %{simulation.margin.toFixed(1)}
+                        </span>
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 border border-blue-100 flex gap-2">
+                   <AlertCircle className="w-5 h-5 flex-shrink-0"/>
+                   <div>
+                     <p className="font-bold mb-1">Hesaplama Mantığı</p>
+                     <p className="mb-1">• <b>Liste Fiyatı:</b> Bayi Fiyatı = Tedarikçi Liste Fiyatı olur. Kazanç = Alış İskontosu - Bayi İskontosu.</p>
+                     <p>• <b>Net Fiyat:</b> Bayi Fiyatı = Net Maliyet x Çarpan olur. Kazanç = (Maliyet x Çarpan) - Bayi İskontosu.</p>
+                   </div>
                 </div>
              </div>
           </div>
