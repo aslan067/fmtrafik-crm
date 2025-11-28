@@ -8,7 +8,7 @@ import {
   ArrowLeft, Save, Box, BarChart2, Globe, 
   RefreshCw, Calculator, Truck, Briefcase, 
   Tag, AlertCircle, TrendingUp, DollarSign, Percent,
-  Image as ImageIcon, Layers, FileText, Wand2, Eye
+  Image as ImageIcon, Layers, FileText, Eye
 } from 'lucide-react'
 
 export default function ProductDetailPage() {
@@ -46,16 +46,16 @@ export default function ProductDetailPage() {
     product_group_id: '',
 
     // Fiyatlandırma
-    supplier_list_price: '',          // Giriş Fiyatı
-    supplier_discount_percentage: '', // Alış İskontosu
-    price_multiplier: '1.80',         // Çarpan
-    dealer_list_price: '',            // Bayi Satış Fiyatı (Sonuç)
+    supplier_list_price: '',          
+    supplier_discount_percentage: '', 
+    price_multiplier: '1.80',         
+    dealer_list_price: '',            
 
     // E-Ticaret
     market_data: {} 
   })
 
-  // SİMÜLASYON VERİLERİ (Görsel Hesaplama)
+  // SİMÜLASYON VERİLERİ
   const [simulation, setSimulation] = useState({
     netCost: 0,
     dealerDiscountRate: 0, 
@@ -64,7 +64,6 @@ export default function ProductDetailPage() {
     margin: 0
   })
 
-  // İstatistikler
   const [stats, setStats] = useState({ totalSold: 0, totalRevenue: 0, lastSaleDate: null })
 
   useEffect(() => {
@@ -72,18 +71,12 @@ export default function ProductDetailPage() {
   }, [params.id])
 
   // ============================================================================================
-  //  1. ANA HESAPLAMA MOTORU (NewProductPage Mantığıyla Birebir)
+  //  1. HESAPLAMA MOTORU (NewProductPage Mantığı ile Eşitlendi)
   // ============================================================================================
   
-  // Seçili Grubu Bul (Bayi İskontosu İçin)
-  const selectedGroup = useMemo(() => {
-    return productGroups.find(g => g.id === product.product_group_id)
-  }, [product.product_group_id, productGroups])
-
-  // Seçili Tedarikçiyi Bul (Çalışma Tipi İçin - Net/İskontolu)
-  const selectedSupplier = useMemo(() => {
-    return suppliers.find(s => s.id === product.supplier_id)
-  }, [product.supplier_id, suppliers])
+  // Seçili Grup ve Tedarikçiyi Bul
+  const selectedGroup = useMemo(() => productGroups.find(g => g.id === product.product_group_id), [product.product_group_id, productGroups])
+  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === product.supplier_id), [product.supplier_id, suppliers])
 
   // Hesaplama Tetikleyicisi
   useEffect(() => {
@@ -91,36 +84,31 @@ export default function ProductDetailPage() {
   }, [
     product.supplier_list_price, 
     product.supplier_discount_percentage, 
-    product.price_multiplier,
-    product.dealer_list_price, // Manuel değişiklikleri de algılasın
+    product.dealer_list_price,
     selectedGroup,
     selectedSupplier
   ])
 
   const calculateEconomics = () => {
-    // 1. Sayısal Değerleri Al
     const sListPrice = parseFloat(product.supplier_list_price) || 0
     const sDiscount = parseFloat(product.supplier_discount_percentage) || 0
-    const multiplier = parseFloat(product.price_multiplier) || 0
     const currentDealerPrice = parseFloat(product.dealer_list_price) || 0
 
-    // 2. Net Maliyet Hesapla
-    // Formül: Liste Fiyatı * (1 - Alış İskontosu)
+    // 1. Net Maliyet Hesapla
+    // Eğer iskonto varsa düş, yoksa liste fiyatı maliyettir.
     const valNetCost = sListPrice * (1 - (sDiscount / 100))
 
-    // 3. Simülasyon (Kar Analizi)
-    // Ürün grubunun bayi iskontosunu al (Yoksa 0)
+    // 2. Simülasyon
+    // Grubun bayi iskontosunu al
     const dealerDiscountRate = parseFloat(selectedGroup?.dealer_discount || 0)
 
-    // Efektif Satış Fiyatı (Cebimize Giren)
-    // Formül: Bayi Fiyatı * (1 - Grup Bayi İskontosu)
+    // Efektif Satış (Bayi İskontosu Düşülmüş)
     const effectiveSalesPrice = currentDealerPrice * (1 - (dealerDiscountRate / 100))
 
     // Kar ve Marj
     const profit = effectiveSalesPrice - valNetCost
     const margin = effectiveSalesPrice > 0 ? (profit / effectiveSalesPrice) * 100 : 0
 
-    // Sonuçları Sadece Simülasyon State'ine Yaz (Inputları bozma)
     setSimulation({
       netCost: valNetCost,
       dealerDiscountRate,
@@ -134,11 +122,11 @@ export default function ProductDetailPage() {
   //  2. INPUT CHANGE HANDLERS (OTOMATİK DOLDURMA)
   // ============================================================================================
 
-  // Fiyat veya Oran Değişince Çalışır (Otomatik Fiyat Güncelleme)
+  // Fiyat/Oran Değişimi
   const handlePriceInputChange = (field, value) => {
     const newProduct = { ...product, [field]: value }
 
-    // Eğer kullanıcı doğrudan Bayi Fiyatını değiştirmiyorsa, biz hesaplayalım
+    // Eğer kullanıcı Bayi Fiyatını elle değiştirmiyorsa, biz hesaplayalım
     if (field !== 'dealer_list_price') {
       
       const sListPrice = field === 'supplier_list_price' ? parseFloat(value) : parseFloat(product.supplier_list_price || 0)
@@ -147,16 +135,15 @@ export default function ProductDetailPage() {
 
       let suggestedPrice = 0
 
-      // --- KRİTİK MANTIK (NewProductPage'den alındı) ---
+      // --- MANTIK: NewProductPage ile AYNI ---
       if (sDiscount > 0) {
         // İSKONTOLU SİSTEM:
-        // Eğer alış iskontosu varsa, Bayi Fiyatı = Tedarikçi Liste Fiyatı olur.
-        // Bizim karımız aradaki iskonto farkıdır.
+        // İskonto varsa, Tedarikçi Liste Fiyatı = Bayi Liste Fiyatı olur.
+        // Karımız aradaki iskonto farkıdır.
         suggestedPrice = sListPrice
       } else {
         // NET SİSTEM:
-        // İskonto yoksa (0), Bayi Fiyatı = Net Maliyet x Çarpan olur.
-        // Net Maliyet bu durumda sListPrice'ın kendisidir.
+        // İskonto 0 ise, Net Maliyet (sListPrice) x Çarpan = Bayi Fiyatı.
         suggestedPrice = sListPrice * multiplier
       }
 
@@ -172,14 +159,25 @@ export default function ProductDetailPage() {
     // Tedarikçinin varsayılan iskontosunu getir
     const defaultDiscount = s?.default_discount || 0
     
-    // State'i güncelle ve hesaplamayı tetikle
-    handlePriceInputChange('supplier_discount_percentage', defaultDiscount) // Bu fonksiyon zincirleme fiyatı da hesaplar
-    
-    setProduct(prev => ({
-      ...prev,
+    // State güncelle
+    const newProduct = {
+      ...product,
       supplier_id: supplierId,
       supplier_discount_percentage: defaultDiscount
-    }))
+    }
+    setProduct(newProduct)
+
+    // Fiyatları yeniden hesaplatmak için manuel tetikleme (state hemen oturmayabilir diye hesaplayıp atıyoruz)
+    const sListPrice = parseFloat(product.supplier_list_price || 0)
+    const multiplier = parseFloat(product.price_multiplier || 1.8)
+    
+    let suggestedPrice = 0
+    if (defaultDiscount > 0) {
+        suggestedPrice = sListPrice
+    } else {
+        suggestedPrice = sListPrice * multiplier
+    }
+    setProduct(prev => ({ ...prev, dealer_list_price: Number(suggestedPrice.toFixed(2)) }))
   }
 
   // Grup Değişimi
@@ -187,18 +185,25 @@ export default function ProductDetailPage() {
     const g = productGroups.find(x => x.id === groupId)
     const defaultMultiplier = g?.profit_multiplier || 1.8
     
-    // Çarpanı güncelle ve hesaplamayı tetikle
-    handlePriceInputChange('price_multiplier', defaultMultiplier)
-
+    // Çarpanı güncelle
     setProduct(prev => ({
       ...prev,
       product_group_id: groupId,
       price_multiplier: defaultMultiplier
     }))
+    
+    // Çarpan değişince eğer sistem NET ise fiyatı güncellememiz gerekir
+    const sListPrice = parseFloat(product.supplier_list_price || 0)
+    const sDiscount = parseFloat(product.supplier_discount_percentage || 0)
+    
+    if (sDiscount === 0) {
+        const newPrice = sListPrice * defaultMultiplier
+        setProduct(prev => ({ ...prev, dealer_list_price: Number(newPrice.toFixed(2)) }))
+    }
   }
 
   // ============================================================================================
-  //  3. VERİ YÜKLEME & KAYIT
+  //  3. VERİ İŞLEMLERİ
   // ============================================================================================
 
   async function loadInitialData() {
@@ -206,7 +211,6 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // Tüm referans tablolarını çek
       const [channelsRes, groupsRes, suppliersRes] = await Promise.all([
         supabase.from('sales_channels').select('*').eq('company_id', profile.company_id),
         supabase.from('product_groups').select('*').eq('company_id', profile.company_id), 
@@ -223,7 +227,6 @@ export default function ProductDetailPage() {
         
         setProduct({
           ...prod,
-          // Sayısal alanları garantiye al
           supplier_list_price: prod.supplier_list_price || '',
           supplier_discount_percentage: prod.supplier_discount_percentage || '',
           price_multiplier: prod.price_multiplier || '1.80',
@@ -236,7 +239,6 @@ export default function ProductDetailPage() {
           product_group_id: prod.product_group_id || ''
         })
 
-        // Satış İstatistikleri
         const { data: sales } = await supabase.from('sale_items').select('quantity, total_price, created_at').eq('product_id', params.id)
         if (sales && sales.length > 0) {
           const tSold = sales.reduce((a, c) => a + Number(c.quantity), 0)
@@ -261,6 +263,10 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
+      // Pricing Method DB'de yoksa veya hesaplanması gerekiyorsa:
+      // Eğer iskonto varsa 'discount', yoksa 'net' olarak gönderelim (veya mevcut yapınızı koruyalım)
+      const finalPricingMethod = parseFloat(product.supplier_discount_percentage) > 0 ? 'discount' : 'net'
+
       const dbPayload = {
         name: product.name,
         product_code: product.product_code,
@@ -274,6 +280,7 @@ export default function ProductDetailPage() {
         supplier_id: product.supplier_id || null,
         product_group_id: product.product_group_id || null,
         
+        pricing_method: finalPricingMethod,
         supplier_list_price: product.supplier_list_price || 0,
         supplier_discount_percentage: product.supplier_discount_percentage || 0,
         price_multiplier: product.price_multiplier || 1.8,
@@ -306,7 +313,6 @@ export default function ProductDetailPage() {
     }
   }
 
-  // E-Ticaret Helper
   const calculateChannelPrice = (channel) => {
     const cost = simulation.netCost || 0 
     const desi = parseFloat(product.desi) || 1
@@ -517,7 +523,7 @@ export default function ProductDetailPage() {
                       type="number" step="0.01" className="input-field" 
                       value={product.price_multiplier} 
                       onChange={(e) => handlePriceInputChange('price_multiplier', e.target.value)}
-                      disabled={parseFloat(product.supplier_discount_percentage) > 0} // İskonto varsa çarpan pasif
+                      disabled={parseFloat(product.supplier_discount_percentage) > 0} 
                       placeholder="1.80"
                     />
                     <p className="text-[10px] text-gray-500 mt-1">
@@ -592,8 +598,8 @@ export default function ProductDetailPage() {
                    <AlertCircle className="w-5 h-5 flex-shrink-0"/>
                    <div>
                      <p className="font-bold mb-1">Hesaplama Mantığı</p>
-                     <p className="mb-1">• <b>İskontolu Alış:</b> Bayi Fiyatı otomatik olarak Tedarikçi Liste Fiyatı olur. Çarpan kullanılmaz.</p>
-                     <p>• <b>Net Alış:</b> Alış İskontosu 0 ise, Bayi Fiyatı = Net Maliyet x Çarpan formülüyle hesaplanır.</p>
+                     <p className="mb-1">• <b>İskontolu Alış:</b> Bayi Fiyatı = Tedarikçi Liste Fiyatı olur. Çarpan kullanılmaz.</p>
+                     <p className="mb-1">• <b>Net Alış:</b> Alış İskontosu 0 ise, Bayi Fiyatı = Net Maliyet x Çarpan formülüyle hesaplanır.</p>
                    </div>
                 </div>
              </div>
