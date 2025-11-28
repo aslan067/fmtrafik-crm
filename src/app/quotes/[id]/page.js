@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
-import { ArrowLeft, Send, Check, X, Edit, Printer } from 'lucide-react'
+import { ArrowLeft, Send, Check, X, Edit, Printer, Briefcase, ShoppingCart } from 'lucide-react'
 
 export default function QuoteDetailPage() {
   const router = useRouter()
   const params = useParams()
   
   const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false) // İşlem yapılıyor durumu
   const [error, setError] = useState(null)
   const [quote, setQuote] = useState(null)
   const [items, setItems] = useState([])
@@ -94,6 +95,69 @@ export default function QuoteDetailPage() {
     }
   }
 
+  // --- YENİ: SATIŞA DÖNÜŞTÜRME FONKSİYONU ---
+  async function convertToSale() {
+    if(!confirm('Bu teklifi onaylayıp SATIŞ SİPARİŞİNE dönüştürmek istiyor musunuz?')) return
+    
+    setProcessing(true)
+    try {
+      const user = await getCurrentUser()
+      
+      // 1. Yeni Satış Kaydı Oluştur (Header)
+      // Satış Numarası oluşturmak gerekebilir ama şimdilik "SLS-" + Teklif No kullanalım
+      const saleNumber = `SLS-${quote.quote_number}` 
+
+      const { data: saleData, error: saleError } = await supabase
+        .from('sales')
+        .insert([{
+          company_id: quote.company_id,
+          quote_id: quote.id,
+          customer_id: quote.customer_id,
+          sale_number: saleNumber,
+          total_amount: quote.total_amount,
+          subtotal: quote.subtotal,
+          tax_amount: quote.tax_amount,
+          discount_amount: quote.discount_amount,
+          currency: quote.currency,
+          exchange_rate: quote.exchange_rate,
+          status: 'pending', // Sipariş alındı
+          payment_status: 'unpaid',
+          delivery_status: 'pending'
+        }])
+        .select()
+        .single()
+
+      if (saleError) throw saleError
+
+      // 2. Kalemleri Kopyala (Quote Items -> Sale Items)
+      const saleItemsData = items.map(item => ({
+        sale_id: saleData.id,
+        product_id: item.product_id,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price, // Net fiyat
+        tax_rate: item.tax_rate,
+        total_price: item.total_price
+      }))
+
+      const { error: itemsError } = await supabase.from('sale_items').insert(saleItemsData)
+      if (itemsError) throw itemsError
+
+      // 3. Teklif Durumunu Güncelle (Converted)
+      await supabase.from('quotes').update({ status: 'converted' }).eq('id', quote.id)
+
+      // 4. Yönlendir
+      alert('Satış kaydı başarıyla oluşturuldu!')
+      router.push(`/sales`) // Henüz detay sayfası yok, listeye gidelim
+
+    } catch (err) {
+      console.error(err)
+      alert('Dönüştürme hatası: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   const handlePrint = () => {
     window.print()
   }
@@ -159,9 +223,10 @@ export default function QuoteDetailPage() {
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                   quote.status === 'approved' ? 'bg-green-100 text-green-800' : 
                   quote.status === 'rejected' ? 'bg-red-100 text-red-800' : 
+                  quote.status === 'converted' ? 'bg-purple-100 text-purple-800' : 
                   'bg-gray-100 text-gray-800'
                 }`}>
-                  {quote.status === 'draft' ? 'Taslak' : quote.status === 'sent' ? 'Gönderildi' : quote.status}
+                  {quote.status === 'draft' ? 'Taslak' : quote.status === 'sent' ? 'Gönderildi' : quote.status === 'approved' ? 'Onaylandı' : quote.status === 'converted' ? 'Satışa Döndü' : quote.status}
                 </span>
               </h1>
               <p className="text-xs text-gray-500">{customer?.name}</p>
@@ -175,31 +240,47 @@ export default function QuoteDetailPage() {
                 <button onClick={() => router.push(`/quotes/${quote.id}/edit`)} className="btn-secondary text-sm"><Edit className="w-4 h-4 mr-2"/> Düzenle</button>
               </>
             )}
+            
             {quote.status === 'sent' && (
               <>
                 <button onClick={() => updateStatus('approved')} className="btn-primary bg-green-600 hover:bg-green-700 text-sm"><Check className="w-4 h-4 mr-2"/> Onayla</button>
                 <button onClick={() => updateStatus('rejected')} className="btn-secondary text-red-600 hover:bg-red-50 text-sm"><X className="w-4 h-4 mr-2"/> Reddet</button>
               </>
             )}
+
+            {/* ONAYLI İSE -> SATIŞA DÖNÜŞTÜR BUTONU */}
+            {quote.status === 'approved' && (
+              <button 
+                onClick={convertToSale} 
+                disabled={processing}
+                className="btn-primary bg-purple-600 hover:bg-purple-700 text-white text-sm shadow-purple-200"
+              >
+                {processing ? 'İşleniyor...' : <><ShoppingCart className="w-4 h-4 mr-2"/> Satışa Dönüştür</>}
+              </button>
+            )}
+
+            {/* ZATEN SATIŞA DÖNMÜŞSE */}
+            {quote.status === 'converted' && (
+              <span className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-2 rounded border border-purple-100 flex items-center gap-1">
+                <Briefcase className="w-4 h-4"/> Satış Kaydı Mevcut
+              </span>
+            )}
+
             <button onClick={handlePrint} className="btn-primary text-sm ml-2"><Printer className="w-4 h-4 mr-2"/> Yazdır / PDF</button>
           </div>
         </div>
       </div>
 
-      {/* --- BELGE GÖRÜNTÜLEME ALANI --- */}
+      {/* --- BELGE GÖRÜNTÜLEME ALANI (DEĞİŞMEDİ - AYNI KALDI) --- */}
       <div className="flex-1 overflow-auto py-8 px-4 print:p-0 print:overflow-visible print:block">
-        
-        {/* A4 KAĞIT KONTEYNERI */}
         <div 
           id="quote-document"
           className="mx-auto bg-white shadow-2xl print:shadow-none max-w-[210mm] min-h-[297mm] p-[10mm] relative text-xs text-gray-800 print:w-full print:max-w-none print:min-h-0 font-sans leading-tight"
         >
-          {/* --- HEADER --- */}
+          {/* Header */}
           <div className="flex justify-between items-end border-b-2 border-gray-800 pb-4 mb-6">
             <div className="flex items-center gap-6">
-              {company?.logo_url && (
-                <img src={company.logo_url} alt="Logo" className="h-24 w-auto object-contain" />
-              )}
+              {company?.logo_url && <img src={company.logo_url} alt="Logo" className="h-24 w-auto object-contain" />}
               <div>
                 <h1 className="font-bold text-base text-gray-900 uppercase tracking-tight">{company?.name}</h1>
                 <div className="text-[10px] text-gray-500 space-y-0.5 mt-1">
@@ -212,7 +293,6 @@ export default function QuoteDetailPage() {
                 </div>
               </div>
             </div>
-            
             <div className="text-right">
               <h2 className="text-xl font-bold text-gray-800 uppercase tracking-wide mb-2">{t.quoteTitle}</h2>
               <div className="text-xs text-gray-600 space-y-0.5">
@@ -223,7 +303,7 @@ export default function QuoteDetailPage() {
             </div>
           </div>
 
-          {/* --- MÜŞTERİ BİLGİLERİ --- */}
+          {/* Customer Info */}
           <div className="flex justify-between mb-4 gap-8 items-start">
             <div className="flex-1">
               <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.to}</h3>
@@ -231,7 +311,6 @@ export default function QuoteDetailPage() {
               <p className="text-gray-600 whitespace-pre-line mt-0.5 max-w-sm">{customer?.address}</p>
               {customer?.tax_office && <p className="text-gray-500 mt-1 text-[10px]">VD: {customer.tax_office} - VKN: {customer.tax_number}</p>}
             </div>
-            
             {contact && (
               <div className="w-1/3 text-right">
                 <h3 className="text-[10px] font-bold text-gray-400 uppercase mb-1 border-b w-full pb-0.5">{t.attention}</h3>
@@ -245,14 +324,14 @@ export default function QuoteDetailPage() {
             )}
           </div>
 
-          {/* --- KONU --- */}
+          {/* Title */}
           {quote.title && (
             <div className="mb-4 bg-gray-50 p-1.5 rounded border border-gray-100 text-center font-semibold text-gray-800 text-sm">
               {quote.title}
             </div>
           )}
 
-          {/* --- TABLO --- */}
+          {/* Table */}
           <table className="w-full mb-6 border-collapse">
             <thead>
               <tr className="border-b-2 border-gray-800 text-[10px] uppercase font-bold text-gray-600 bg-gray-50">
@@ -272,17 +351,11 @@ export default function QuoteDetailPage() {
                   <td className="py-2 px-2">
                     <div className="flex gap-3 items-start">
                       {quote.show_product_images && item.products?.image_url && (
-                        <img 
-                          src={item.products.image_url} 
-                          className="w-12 h-12 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply flex-shrink-0" 
-                          alt="" 
-                        />
+                        <img src={item.products.image_url} className="w-12 h-12 object-contain border rounded bg-white p-0.5 print:mix-blend-multiply flex-shrink-0" alt="" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-gray-900 leading-snug">{item.description}</p>
-                        {item.products?.product_code && (
-                          <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>
-                        )}
+                        {item.products?.product_code && <p className="text-[10px] text-gray-500 font-mono">{item.products.product_code}</p>}
                         {quote.show_specifications && item.products?.specifications && (
                           <div className="text-[9px] text-gray-500 mt-1 leading-tight">
                             {Object.entries(item.products.specifications).slice(0,6).map(([k,v]) => (
@@ -294,72 +367,36 @@ export default function QuoteDetailPage() {
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center font-medium whitespace-nowrap align-top pt-3">{item.quantity} {item.products?.unit}</td>
-                  
-                  {/* FİYAT SÜTUNU (GÜNCELLENDİ: LİSTE VE NET FİYAT) */}
                   <td className="py-2 px-2 text-right align-top pt-3">
-                    {/* Eğer iskonto varsa Liste Fiyatını üstte çizili göster */}
                     {item.discount_percentage > 0 && (
                       <div className="text-[9px] text-gray-400 line-through decoration-red-300">
                         {symbol}{parseFloat(item.list_price || 0).toLocaleString('tr-TR', {minimumFractionDigits:2})}
                       </div>
                     )}
-                    {/* Asıl (Net) Birim Fiyat */}
                     <div className="font-mono font-bold text-gray-900">
                       {symbol}{parseFloat(item.unit_price || 0).toLocaleString('tr-TR', {minimumFractionDigits:2})}
                     </div>
                   </td>
-                  
-                  {quote.discount_amount > 0 && (
-                    <td className="py-2 px-2 text-center text-red-600 text-[10px] align-top pt-3">
-                      {item.discount_percentage > 0 ? `%${item.discount_percentage}` : '-'}
-                    </td>
-                  )}
-                  
-                  {items.some(i => i.tax_rate > 0) && (
-                    <td className="py-2 px-2 text-center text-gray-500 text-[10px] align-top pt-3">
-                      {item.tax_rate > 0 ? `%${item.tax_rate}` : '-'}
-                    </td>
-                  )}
-                  
-                  <td className="py-2 px-2 text-right font-bold text-gray-900 align-top pt-3">
-                    {symbol}{parseFloat(item.total_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}
-                  </td>
+                  {quote.discount_amount > 0 && <td className="py-2 px-2 text-center text-red-600 text-[10px] align-top pt-3">{item.discount_percentage > 0 ? `%${item.discount_percentage}` : '-'}</td>}
+                  {items.some(i => i.tax_rate > 0) && <td className="py-2 px-2 text-center text-gray-500 text-[10px] align-top pt-3">{item.tax_rate > 0 ? `%${item.tax_rate}` : '-'}</td>}
+                  <td className="py-2 px-2 text-right font-bold text-gray-900 align-top pt-3">{symbol}{parseFloat(item.total_price).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          {/* --- TOPLAMLAR --- */}
+          {/* Totals */}
           <div className="flex justify-end mb-6 break-inside-avoid">
             <div className="w-64 space-y-1 text-right text-xs">
-              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1">
-                <span>{t.subtotal}:</span>
-                <span>{symbol}{parseFloat(quote.subtotal).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
-              </div>
-              
-              {quote.discount_amount > 0 && (
-                <div className="flex justify-between text-red-600 border-b border-dashed border-gray-300 pb-1">
-                  <span>{t.generalDiscount} (%{quote.discount_percentage}):</span>
-                  <span>-{symbol}{parseFloat(quote.discount_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
-                </div>
-              )}
-              
-              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1">
-                <span>{t.vatTotal}:</span>
-                <span>{symbol}{parseFloat(quote.tax_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
-              </div>
-              
-              <div className="flex justify-between font-bold text-lg text-gray-900 pt-1">
-                <span>{t.grandTotal}:</span>
-                <span>{symbol}{parseFloat(quote.total_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span>
-              </div>
+              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1"><span>{t.subtotal}:</span><span>{symbol}{parseFloat(quote.subtotal).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
+              {quote.discount_amount > 0 && <div className="flex justify-between text-red-600 border-b border-dashed border-gray-300 pb-1"><span>{t.generalDiscount} (%{quote.discount_percentage}):</span><span>-{symbol}{parseFloat(quote.discount_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>}
+              <div className="flex justify-between text-gray-600 border-b border-dashed border-gray-300 pb-1"><span>{t.vatTotal}:</span><span>{symbol}{parseFloat(quote.tax_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
+              <div className="flex justify-between font-bold text-lg text-gray-900 pt-1"><span>{t.grandTotal}:</span><span>{symbol}{parseFloat(quote.total_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
             </div>
           </div>
 
-          {/* --- ALT BİLGİLER (Footer) --- */}
+          {/* Footer */}
           <div className="grid grid-cols-2 gap-8 pt-4 border-t-2 border-gray-200 break-inside-avoid text-[10px]">
-            
-            {/* Sol: Banka ve Şartlar */}
             <div className="space-y-4">
               {banks.length > 0 && (
                 <div>
@@ -374,7 +411,6 @@ export default function QuoteDetailPage() {
                   </div>
                 </div>
               )}
-
               {(quote.notes || quote.terms) && (
                 <div>
                   <h4 className="font-bold text-gray-800 uppercase mb-1 border-b w-fit pb-0.5">{t.terms}</h4>
@@ -383,8 +419,6 @@ export default function QuoteDetailPage() {
                 </div>
               )}
             </div>
-
-            {/* Sağ: Hazırlayan ve İmza */}
             <div className="flex flex-col items-end justify-between">
               {creator && (
                 <div className="text-right mb-6">
@@ -397,49 +431,20 @@ export default function QuoteDetailPage() {
                   </div>
                 </div>
               )}
-              
               <div className="w-40 border-t border-gray-400 pt-2 text-center mt-4">
                 <p className="text-[9px] text-gray-400 font-bold uppercase">Onay / İmza / Kaşe</p>
               </div>
             </div>
-
           </div>
-
         </div>
       </div>
-
-      {/* --- PRINT STYLE OVERRIDES --- */}
+      
       <style jsx global>{`
         @media print {
-          body {
-            visibility: hidden;
-            background-color: white !important;
-            overflow: visible !important;
-            height: auto !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          #quote-document, #quote-document * {
-            visibility: visible;
-          }
-          #quote-document {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            max-width: none !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 5mm !important;
-            box-shadow: none !important;
-            border: none !important;
-            background-color: white !important;
-          }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+          body { visibility: hidden; background-color: white !important; overflow: visible !important; height: auto !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
+          #quote-document, #quote-document * { visibility: visible; }
+          #quote-document { position: absolute; left: 0; top: 0; width: 100% !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 5mm !important; box-shadow: none !important; border: none !important; background-color: white !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
     </div>
