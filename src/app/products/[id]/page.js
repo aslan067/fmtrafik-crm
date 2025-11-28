@@ -8,7 +8,8 @@ import {
   ArrowLeft, Save, Box, BarChart2, Globe, 
   RefreshCw, Calculator, Truck, Briefcase, 
   Tag, AlertCircle, TrendingUp, DollarSign, Percent,
-  Image as ImageIcon, Layers, FileText, Wand2, Eye
+  Image as ImageIcon, Layers, FileText, Wand2, Eye,
+  CheckCircle, XCircle
 } from 'lucide-react'
 
 export default function ProductDetailPage() {
@@ -26,7 +27,7 @@ export default function ProductDetailPage() {
   
   // Ürün State
   const [product, setProduct] = useState({
-    // --- DB Sütunları ile Birebir Eşleşen Alanlar ---
+    // --- GENEL ---
     name: '',
     product_code: '',
     description: '',
@@ -34,80 +35,113 @@ export default function ProductDetailPage() {
     unit: 'Adet',
     currency: 'TRY',
     is_active: true,
-    is_published: false, // <--- YENİ EKLENDİ
-    supplier_id: '',
-    product_group_id: '',
+    is_published: false,
+    
+    // --- LOJİSTİK ---
     tax_rate: 20,
     desi: 1,
     stock_quantity: 0,
     safety_stock: 5,
-    market_data: {},
 
-    // --- Fiyatlandırma Alanları ---
-    supplier_price: 0,               // UI: Tedarikçi Fiyatı (Liste veya Net)
-    supplier_discount_percentage: 0, // UI: İskonto
-    price_multiplier: 1.8,           // UI: Çarpan
-    list_price: 0,                   // UI: Bayi Satış Fiyatı (dealer_list_price)
-    
-    // --- Sadece UI İçin Hesaplanan ---
-    pricing_method: 'discount',      // 'net' | 'discount'
-    net_cost: 0                      // Otomatik hesaplanan
+    // --- İLİŞKİLER (Artık Tab 2'de) ---
+    supplier_id: '',
+    product_group_id: '',
+
+    // --- B2B FİYATLANDIRMA (DB İsimleri) ---
+    supplier_list_price: '',         // Tedarikçi Giriş Fiyatı
+    supplier_discount_percentage: '', // İskonto
+    price_multiplier: '1.80',        // Çarpan
+    dealer_list_price: '',           // Bayi Satış Fiyatı (Katalog)
+
+    // --- E-TİCARET ---
+    market_data: {} 
+  })
+
+  // Simülasyon State'i (UI Gösterimi İçin)
+  const [simulation, setSimulation] = useState({
+    netCost: 0,
+    profit: 0,
+    margin: 0
   })
 
   // İstatistikler
   const [stats, setStats] = useState({ totalSold: 0, totalRevenue: 0, lastSaleDate: null })
 
-  // Bonus: Hedef Kar Marjı Girişi (UI)
-  const [targetMargin, setTargetMargin] = useState(30)
-
   useEffect(() => {
     loadInitialData()
   }, [params.id])
 
-  // --- HESAPLAMA MOTORU (NET MALİYET) ---
+  // --- HESAPLAMA MOTORU (Yeni Ürün Ekle Mantığıyla Birebir) ---
   useEffect(() => {
-    const rawPrice = parseFloat(product.supplier_price) || 0
-    let calculatedNetCost = 0
+    calculateB2BSimulation()
+  }, [
+    product.supplier_list_price, 
+    product.supplier_discount_percentage, 
+    product.price_multiplier,
+    product.dealer_list_price
+  ])
 
-    if (product.pricing_method === 'net') {
-      calculatedNetCost = rawPrice
-    } else {
-      const discount = parseFloat(product.supplier_discount_percentage) || 0
-      calculatedNetCost = rawPrice * (1 - (discount / 100))
-    }
+  const calculateB2BSimulation = () => {
+    const sListPrice = parseFloat(product.supplier_list_price) || 0
+    const sDiscount = parseFloat(product.supplier_discount_percentage) || 0
+    const multiplier = parseFloat(product.price_multiplier) || 0
+    const currentDealerPrice = parseFloat(product.dealer_list_price) || 0
+
+    // 1. Net Maliyet Hesapla
+    const valNetCost = sListPrice * (1 - (sDiscount / 100))
+
+    // 2. Otomatik Fiyat Önerisi (Sadece inputlar değiştiğinde ve manuel override yoksa tetiklenebilir, 
+    // ama burada kullanıcı deneyimi için sadece görseli hesaplıyoruz, 
+    // input güncellemesini aşağıda ayrı buton veya olayla yapacağız)
     
-    if (calculatedNetCost !== product.net_cost) {
-      setProduct(prev => ({ ...prev, net_cost: Number(calculatedNetCost.toFixed(2)) }))
-    }
-  }, [product.supplier_price, product.supplier_discount_percentage, product.pricing_method])
+    // Simülasyon Değerleri (Mevcut dealer_list_price üzerinden kar hesabı)
+    const profit = currentDealerPrice - valNetCost
+    const margin = currentDealerPrice > 0 ? (profit / currentDealerPrice) * 100 : 0
 
-
-  // --- B2B FİYAT HESAPLAMA ---
-  const calculateB2BPrice = () => {
-    const cost = parseFloat(product.net_cost) || 0
-    const mult = parseFloat(product.price_multiplier) || 1
-    const suggestedPrice = cost * mult
-    setProduct(prev => ({ ...prev, list_price: Number(suggestedPrice.toFixed(2)) }))
+    setSimulation({
+      netCost: valNetCost,
+      profit: profit,
+      margin: margin
+    })
   }
 
-  // --- HEDEF KÂRA GÖRE FİYAT BELİRLEME ---
-  const applyTargetMargin = () => {
-    const cost = parseFloat(product.net_cost) || 0
-    if (cost <= 0) return alert('Önce maliyet oluşmalı.')
+  // Inputlar değiştiğinde OTOMATİK FİYAT GÜNCELLEME (Opsiyonel: New Product sayfasında bu onBlur veya onChange'de çalışıyordu)
+  // Burada kullanıcı manuel de değiştirebilmeli. O yüzden bir "Hesapla" butonu veya kurala bağlı useEffect kullanabiliriz.
+  // Kullanıcı kolaylığı için: Eğer iskonto değişirse veya tedarikçi fiyatı değişirse, önerilen fiyatı yazarız.
+  const handlePriceInputsChange = (field, value) => {
+    // Önce state'i güncelle
+    const newProduct = { ...product, [field]: value }
     
-    const targetPrice = cost * (1 + (targetMargin / 100))
-    const newMultiplier = targetPrice / cost
+    // Değerleri al
+    const sListPrice = field === 'supplier_list_price' ? parseFloat(value) : parseFloat(product.supplier_list_price || 0)
+    const sDiscount = field === 'supplier_discount_percentage' ? parseFloat(value) : parseFloat(product.supplier_discount_percentage || 0)
+    const multiplier = field === 'price_multiplier' ? parseFloat(value) : parseFloat(product.price_multiplier || 1.8)
 
-    setProduct(prev => ({
-      ...prev,
-      list_price: Number(targetPrice.toFixed(2)),
-      price_multiplier: Number(newMultiplier.toFixed(2))
-    }))
+    // Net Maliyet
+    const valNetCost = sListPrice * (1 - (sDiscount / 100))
+    
+    let suggestedDealerPrice = parseFloat(product.dealer_list_price || 0)
+
+    // --- MANTIK: İskonto var mı yok mu? ---
+    if (field === 'supplier_list_price' || field === 'supplier_discount_percentage' || field === 'price_multiplier') {
+        if (sDiscount > 0) {
+            // İskontolu Sistem: Bayi Fiyatı = Tedarikçi Liste Fiyatı
+            suggestedDealerPrice = sListPrice
+        } else {
+            // Net Fiyat Sistemi: Bayi Fiyatı = Net Maliyet * Çarpan
+            suggestedDealerPrice = valNetCost * multiplier
+        }
+        
+        // Hesaplanan değeri de state'e yaz
+        newProduct.dealer_list_price = Number(suggestedDealerPrice.toFixed(2))
+    }
+
+    setProduct(newProduct)
   }
 
   // --- E-TİCARET HESAPLAMA ---
   const calculateChannelPrice = (channel) => {
-    const cost = parseFloat(product.net_cost) || 0
+    const cost = simulation.netCost || 0 // Net maliyet simülasyondan gelir
     const desi = parseFloat(product.desi) || 1
     const vatRate = parseFloat(product.tax_rate) || 20
     const commission = parseFloat(channel.commission_rate) || 0
@@ -170,25 +204,19 @@ export default function ProductDetailPage() {
         const { data: prod, error } = await supabase.from('products').select('*').eq('id', params.id).single()
         if (error) throw error
         
-        // Fiyatlandırma Yöntemini Tahmin Et
-        let detectedMethod = 'discount'
-        if (prod.supplier_discount_percentage === 0) {
-            detectedMethod = 'discount' 
-        }
-
         setProduct({
           ...prod,
-          // DB -> UI Eşleşmeleri
-          list_price: prod.dealer_list_price || 0,
-          supplier_price: prod.supplier_list_price || 0,
-          pricing_method: detectedMethod,
-          is_active: prod.is_active,
-          is_published: prod.is_published || false, // <--- YENİ
+          supplier_list_price: prod.supplier_list_price || '',
+          supplier_discount_percentage: prod.supplier_discount_percentage || '',
+          price_multiplier: prod.price_multiplier || '1.80',
+          dealer_list_price: prod.dealer_list_price || '',
+          market_data: prod.market_data || {},
           
           // Null check
           description: prod.description || '',
           image_url: prod.image_url || '',
-          market_data: prod.market_data || {}
+          supplier_id: prod.supplier_id || '',
+          product_group_id: prod.product_group_id || ''
         })
 
         const { data: sales } = await supabase.from('sale_items').select('quantity, total_price, created_at').eq('product_id', params.id)
@@ -215,7 +243,6 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // UI state'inde olup DB'de olmayanları çıkar
       const dbPayload = {
         name: product.name,
         product_code: product.product_code,
@@ -224,22 +251,21 @@ export default function ProductDetailPage() {
         unit: product.unit,
         currency: product.currency,
         is_active: product.is_active,
-        is_published: product.is_published, // <--- YENİ
+        is_published: product.is_published,
         
+        // Tab 2'den gelen veriler
         supplier_id: product.supplier_id || null,
         product_group_id: product.product_group_id || null,
+        supplier_list_price: product.supplier_list_price || 0,
+        supplier_discount_percentage: product.supplier_discount_percentage || 0,
+        price_multiplier: product.price_multiplier || 1.8,
+        dealer_list_price: product.dealer_list_price || 0,
 
         tax_rate: product.tax_rate,
         desi: product.desi,
         stock_quantity: product.stock_quantity,
         safety_stock: product.safety_stock,
         market_data: product.market_data,
-
-        // Fiyat Eşleşmeleri
-        supplier_list_price: product.supplier_price,
-        supplier_discount_percentage: product.supplier_discount_percentage,
-        price_multiplier: product.price_multiplier,
-        dealer_list_price: product.list_price,
         
         company_id: profile.company_id,
         updated_at: new Date()
@@ -267,8 +293,6 @@ export default function ProductDetailPage() {
 
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€' }
   const symbol = currencySymbols[product.currency] || '₺'
-  const b2bProfit = (product.list_price - product.net_cost)
-  const b2bMargin = product.list_price > 0 ? (b2bProfit / product.list_price) * 100 : 0
 
   if (loading) return <DashboardLayout><div className="flex h-screen items-center justify-center">Yükleniyor...</div></DashboardLayout>
 
@@ -284,7 +308,7 @@ export default function ProductDetailPage() {
               <h1 className="text-2xl font-bold text-gray-900">{params.id === 'new' ? 'Yeni Ürün Oluştur' : product.name}</h1>
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <span className="font-mono bg-gray-100 px-1 rounded">{product.product_code || 'KOD YOK'}</span>
-                {product.net_cost > 0 && <span className="text-green-600 font-medium px-2 bg-green-50 rounded">Net Maliyet: {symbol}{product.net_cost}</span>}
+                {simulation.netCost > 0 && <span className="text-green-600 font-medium px-2 bg-green-50 rounded">Net Maliyet: {symbol}{simulation.netCost.toLocaleString('tr-TR', {minimumFractionDigits: 2})}</span>}
               </div>
             </div>
           </div>
@@ -314,7 +338,7 @@ export default function ProductDetailPage() {
           ))}
         </div>
 
-        {/* TAB 1: GENEL */}
+        {/* TAB 1: GENEL (SADELEŞTİRİLDİ) */}
         {activeTab === 'general' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in">
             <div className="lg:col-span-8 space-y-6">
@@ -323,13 +347,7 @@ export default function ProductDetailPage() {
                 <div><label className="label-text">Ürün Adı</label><input type="text" className="input-field" value={product.name} onChange={(e) => setProduct({...product, name: e.target.value})}/></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div><label className="label-text">Ürün Kodu (SKU)</label><input type="text" className="input-field font-mono" value={product.product_code} onChange={(e) => setProduct({...product, product_code: e.target.value})}/></div>
-                  <div>
-                     <label className="label-text">Ürün Grubu</label>
-                     <select className="input-field" value={product.product_group_id} onChange={(e) => setProduct({...product, product_group_id: e.target.value})}>
-                       <option value="">Seçiniz...</option>
-                       {productGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                     </select>
-                  </div>
+                  <div><label className="label-text">Birim</label><select className="input-field" value={product.unit} onChange={(e) => setProduct({...product, unit: e.target.value})}><option>Adet</option><option>Metre</option><option>Kg</option><option>Takım</option></select></div>
                 </div>
                 <div><label className="label-text">Ürün Açıklaması</label><textarea rows={4} className="input-field" value={product.description || ''} onChange={(e) => setProduct({...product, description: e.target.value})}></textarea></div>
               </div>
@@ -344,7 +362,6 @@ export default function ProductDetailPage() {
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div><label className="label-text">KDV Oranı (%)</label><select className="input-field" value={product.tax_rate} onChange={(e) => setProduct({...product, tax_rate: Number(e.target.value)})}>
                          <option value="0">%0</option><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></div>
-                    <div><label className="label-text">Birim</label><select className="input-field" value={product.unit} onChange={(e) => setProduct({...product, unit: e.target.value})}><option>Adet</option><option>Metre</option><option>Kg</option><option>Takım</option></select></div>
                     <div><label className="label-text">Para Birimi</label><select className="input-field" value={product.currency} onChange={(e) => setProduct({...product, currency: e.target.value})}><option value="TRY">TRY</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
                  </div>
               </div>
@@ -362,112 +379,155 @@ export default function ProductDetailPage() {
                   <div><label className="label-text">Görsel Bağlantısı (URL)</label><input type="text" className="input-field text-xs" value={product.image_url || ''} onChange={(e) => setProduct({...product, image_url: e.target.value})}/></div>
                </div>
 
-               {/* YENİLENEN KISIM: DURUM & YAYINLAMA */}
+               {/* DURUM & YAYINLAMA */}
                <div className="card space-y-4">
-                  <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Layers className="w-4 h-4"/> Tedarikçi & Durum</h3>
-                  <div><label className="label-text">Ana Tedarikçi</label><select className="input-field" value={product.supplier_id} onChange={(e) => setProduct({...product, supplier_id: e.target.value})}>
-                       <option value="">Seçiniz...</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                  
-                  {/* Aktiflik Toggle */}
+                  <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Layers className="w-4 h-4"/> Durum</h3>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                      <span className="text-sm font-medium">Satış Durumu</span>
                      <div className="flex items-center gap-2"><span className={`text-xs font-bold ${product.is_active ? 'text-green-600' : 'text-gray-400'}`}>{product.is_active ? 'AKTİF' : 'PASİF'}</span><input type="checkbox" checked={product.is_active} onChange={(e) => setProduct({...product, is_active: e.target.checked})} className="toggle toggle-sm"/></div>
                   </div>
-
-                  {/* Yayınlama Toggle */}
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                     <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4 text-gray-500"/>
-                        <span className="text-sm font-medium">Katalogda Yayınla</span>
-                     </div>
-                     <div className="flex items-center gap-2">
-                        <span className={`text-xs font-bold ${product.is_published ? 'text-blue-600' : 'text-gray-400'}`}>{product.is_published ? 'YAYINDA' : 'GİZLİ'}</span>
-                        <input type="checkbox" checked={product.is_published} onChange={(e) => setProduct({...product, is_published: e.target.checked})} className="toggle toggle-sm toggle-info"/>
-                     </div>
+                     <div className="flex items-center gap-2"><Eye className="w-4 h-4 text-gray-500"/><span className="text-sm font-medium">Katalogda Yayınla</span></div>
+                     <div className="flex items-center gap-2"><span className={`text-xs font-bold ${product.is_published ? 'text-blue-600' : 'text-gray-400'}`}>{product.is_published ? 'YAYINDA' : 'GİZLİ'}</span><input type="checkbox" checked={product.is_published} onChange={(e) => setProduct({...product, is_published: e.target.checked})} className="toggle toggle-sm toggle-info"/></div>
                   </div>
                </div>
             </div>
           </div>
         )}
 
-        {/* TAB 2: B2B FİYATLANDIRMA */}
+        {/* TAB 2: B2B FİYATLANDIRMA & TEDARİK */}
         {activeTab === 'b2b' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in">
-             <div className="card bg-blue-50/50 border-blue-100 space-y-6">
+             
+             {/* SOL KOLON: Form Giriş Alanları */}
+             <div className="card space-y-6 border-blue-100 bg-blue-50/30">
                 <div className="flex items-center gap-3 border-b border-blue-200 pb-3">
-                   <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign className="w-6 h-6"/></div>
-                   <div><h3 className="font-bold text-blue-900">1. Maliyet Analizi</h3><p className="text-xs text-blue-700">Tedarikçi çalışma tipine göre maliyet belirlenir.</p></div>
-                </div>
-
-                <div className="bg-white p-3 rounded-lg border border-blue-200">
-                  <label className="label-text text-blue-800 mb-2">Fiyatlandırma Yöntemi</label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="pricing_method" value="discount" checked={product.pricing_method === 'discount'} onChange={() => setProduct({...product, pricing_method: 'discount'})} className="radio radio-primary radio-sm"/>
-                      <span className="text-sm">Liste Fiyatı + İskonto</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="pricing_method" value="net" checked={product.pricing_method === 'net'} onChange={() => setProduct({...product, pricing_method: 'net'})} className="radio radio-primary radio-sm"/>
-                      <span className="text-sm">Net Alış Fiyatı</span>
-                    </label>
-                  </div>
+                   <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><Briefcase className="w-6 h-6"/></div>
+                   <div><h3 className="font-bold text-blue-900">Tedarik & Fiyatlandırma</h3><p className="text-xs text-blue-700">Tedarikçi bilgileri ve maliyet yapısı.</p></div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label-text text-blue-800">{product.pricing_method === 'discount' ? 'Tedarikçi Liste Fiyatı' : 'Net Alış Fiyatı'}</label>
-                    <div className="relative"><input type="number" className="input-field" value={product.supplier_price} onChange={(e) => setProduct({...product, supplier_price: e.target.value})}/><span className="absolute right-3 top-2 text-gray-400">{symbol}</span></div>
+                  <div className="col-span-2">
+                     <label className="label-text">Ana Tedarikçi</label>
+                     <select className="input-field" value={product.supplier_id} onChange={(e) => setProduct({...product, supplier_id: e.target.value})}>
+                       <option value="">Seçiniz...</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
                   </div>
-                  {product.pricing_method === 'discount' && (
-                    <div>
-                      <label className="label-text text-blue-800">İskonto Oranı (%)</label>
-                      <div className="relative"><input type="number" className="input-field" value={product.supplier_discount_percentage} onChange={(e) => setProduct({...product, supplier_discount_percentage: e.target.value})}/><span className="absolute right-3 top-2 text-gray-400">%</span></div>
-                    </div>
-                  )}
+                  <div className="col-span-2">
+                     <label className="label-text">Ürün Grubu</label>
+                     <select className="input-field" value={product.product_group_id} onChange={(e) => setProduct({...product, product_group_id: e.target.value})}>
+                       <option value="">Seçiniz...</option>{productGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
+                  </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-xl border border-blue-200 flex justify-between items-center shadow-sm">
-                  <div>
-                    <span className="block text-xs font-bold text-gray-500 uppercase">NET MALİYET</span>
-                    <span className="text-[10px] text-gray-400">{product.pricing_method === 'discount' ? '(İskonto düşülmüş)' : '(Direkt Net)'}</span>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-blue-100">
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="label-text text-blue-800">Tedarikçi Liste Fiyatı</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        className="input-field font-medium" 
+                        value={product.supplier_list_price} 
+                        onChange={(e) => handlePriceInputsChange('supplier_list_price', e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <span className="absolute right-3 top-2 text-gray-400">{symbol}</span>
+                    </div>
                   </div>
-                  <span className="font-bold text-3xl text-blue-700">{symbol}{product.net_cost.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                  
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="label-text text-blue-800">İskonto Oranı (%)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        className="input-field" 
+                        value={product.supplier_discount_percentage} 
+                        onChange={(e) => handlePriceInputsChange('supplier_discount_percentage', e.target.value)}
+                        placeholder="0"
+                      />
+                      <span className="absolute right-3 top-2 text-gray-400">%</span>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="label-text text-blue-800">Fiyat Çarpanı</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      className="input-field" 
+                      value={product.price_multiplier} 
+                      onChange={(e) => handlePriceInputsChange('price_multiplier', e.target.value)}
+                      placeholder="1.80"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">Sadece net alışlarda kullanılır.</p>
+                  </div>
+
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="label-text text-green-700">Bayi / Katalog Fiyatı</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        className="input-field font-bold text-green-700 border-green-300 focus:ring-green-200" 
+                        value={product.dealer_list_price} 
+                        onChange={(e) => setProduct({...product, dealer_list_price: e.target.value})}
+                        placeholder="0.00"
+                      />
+                      <span className="absolute right-3 top-2 text-gray-400">{symbol}</span>
+                    </div>
+                  </div>
                 </div>
              </div>
 
-             <div className="card bg-green-50/50 border-green-100 space-y-6">
-                <div className="flex items-center gap-3 border-b border-green-200 pb-3">
-                   <div className="p-2 bg-green-100 text-green-600 rounded-lg"><Calculator className="w-6 h-6"/></div>
-                   <div><h3 className="font-bold text-green-900">2. Bayi Satış Fiyatı</h3><p className="text-xs text-green-700">Tekliflerde ve bayilerde kullanılacak baz fiyat.</p></div>
+             {/* SAĞ KOLON: KÂR SİMÜLASYONU (GÖRSEL AYNEN AKTARILDI) */}
+             <div className="space-y-6">
+                <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                  <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4">
+                    <Calculator className="w-5 h-5"/> Kar Simülasyonu
+                  </h3>
+
+                  <div className="space-y-4">
+                    
+                    {/* Net Maliyet */}
+                    <div className="flex justify-between items-center p-3 bg-white rounded border border-gray-200 shadow-sm">
+                      <span className="text-sm font-medium text-gray-600">Net Alış Maliyeti</span>
+                      <span className="font-bold text-gray-900">{symbol}{simulation.netCost.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="flex justify-center text-gray-400"><ArrowLeft className="w-5 h-5 rotate-[-90deg]"/></div>
+
+                    {/* Satış Fiyatı */}
+                    <div className="flex justify-between items-center p-3 bg-white rounded border border-green-200 shadow-sm ring-1 ring-green-50">
+                      <span className="text-sm font-medium text-green-700">Bayi Satış Fiyatı</span>
+                      <span className="font-bold text-green-700 text-lg">{symbol}{parseFloat(product.dealer_list_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+
+                    {/* Kar Marjı Sonuçları */}
+                    <div className={`p-4 rounded-lg border-l-4 mt-4 ${simulation.margin < 10 ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-gray-600">Tahmini Kar:</span>
+                        <span className="font-medium text-gray-900">{symbol}{simulation.profit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Kar Marjı:</span>
+                        <span className={`font-bold ${simulation.margin < 10 ? 'text-red-600' : 'text-green-600'}`}>
+                          %{simulation.margin.toFixed(1)}
+                        </span>
+                      </div>
+                      {simulation.margin < 10 && simulation.margin > 0 && (
+                        <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3"/> Kar marjı düşük!
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-white p-3 rounded-lg border border-dashed border-green-300">
-                   <div className="flex justify-between items-center mb-2">
-                     <label className="text-xs font-bold text-green-800 flex items-center gap-1"><Wand2 className="w-3 h-3"/> Hedef Kâr Marjı (%)</label>
+                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 border border-blue-100 flex gap-2">
+                   <AlertCircle className="w-5 h-5 flex-shrink-0"/>
+                   <div>
+                     <p className="font-bold mb-1">Nasıl Çalışır?</p>
+                     <p className="mb-1">• <b>İskontolu Ürün:</b> Eğer iskonto girerseniz, bayi fiyatı otomatik olarak tedarikçi liste fiyatına eşitlenir. Sizin karınız iskonto farkıdır.</p>
+                     <p>• <b>Net Fiyatlı Ürün:</b> Eğer iskonto 0 ise, bayi fiyatı <b>Net Maliyet x Çarpan</b> formülüyle hesaplanır.</p>
                    </div>
-                   <div className="flex gap-2">
-                     <input type="number" className="input-field py-1 text-sm w-20 text-center" value={targetMargin} onChange={(e) => setTargetMargin(Number(e.target.value))}/>
-                     <button onClick={applyTargetMargin} className="flex-1 btn-secondary bg-green-50 text-green-700 hover:bg-green-100 border-green-200 text-xs h-[38px]">Buna Göre Fiyatla</button>
-                   </div>
-                </div>
-
-                <div className="flex items-end gap-4">
-                   <div className="flex-1">
-                      <label className="label-text text-green-800">Mevcut Çarpan</label>
-                      <input type="number" step="0.1" className="input-field font-bold text-green-700" value={product.price_multiplier} onChange={(e) => setProduct({...product, price_multiplier: e.target.value})}/>
-                   </div>
-                   <button onClick={calculateB2BPrice} className="btn-secondary h-[42px] mb-[2px] bg-white border-green-200 text-green-700 hover:bg-green-100">Çarpanla Hesapla</button>
-                </div>
-
-                <div className="relative">
-                   <label className="label-text text-green-900">B2B Satış Fiyatı (KDV Hariç)</label>
-                   <input type="number" className="w-full border-2 border-green-400 rounded-lg py-3 pl-4 pr-12 text-2xl font-bold text-green-700 outline-none focus:ring-4 focus:ring-green-100 transition-all" value={product.list_price} onChange={(e) => setProduct({...product, list_price: e.target.value})}/>
-                   <span className="absolute right-4 top-9 text-green-600 font-bold text-lg">{symbol}</span>
-                </div>
-
-                <div className={`p-3 rounded border flex justify-between items-center ${b2bMargin < 15 ? 'bg-red-100 border-red-200 text-red-700' : 'bg-green-100 border-green-200 text-green-700'}`}>
-                   <span className="text-xs font-bold uppercase">Mevcut Kar Marjı</span>
-                   <span className="font-bold flex items-center gap-1">%{b2bMargin.toFixed(1)} {b2bMargin < 15 && <AlertCircle className="w-4 h-4"/>}</span>
                 </div>
              </div>
           </div>
@@ -484,7 +544,7 @@ export default function ProductDetailPage() {
              )}
              <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex gap-3 text-sm text-orange-900 mb-4">
                 <Globe className="w-5 h-5 flex-shrink-0 mt-1"/>
-                <div><p className="font-bold">Bağımsız E-Ticaret Fiyatlaması</p><p className="opacity-80">Net Maliyet ({symbol}{product.net_cost}) + Kargo + Komisyon + KDV.</p></div>
+                <div><p className="font-bold">Bağımsız E-Ticaret Fiyatlaması</p><p className="opacity-80">Net Maliyet ({symbol}{simulation.netCost.toLocaleString('tr-TR', {maximumFractionDigits:2})}) + Kargo + Komisyon + KDV.</p></div>
              </div>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {channels.map(channel => {
@@ -499,7 +559,7 @@ export default function ProductDetailPage() {
                        </div>
                        <div className="p-4 space-y-4">
                           <div className="text-xs text-gray-500 space-y-1 bg-gray-50 p-2 rounded border border-gray-100">
-                             <div className="flex justify-between"><span>Maliyet + Kargo:</span> <span className="font-mono">{symbol}{(product.net_cost + channel.cargo_base_fee + (product.desi * channel.cargo_desi_multiplier)).toFixed(2)}</span></div>
+                             <div className="flex justify-between"><span>Maliyet + Kargo:</span> <span className="font-mono">{symbol}{(simulation.netCost + channel.cargo_base_fee + (product.desi * channel.cargo_desi_multiplier)).toFixed(2)}</span></div>
                              <div className="flex justify-between text-green-600"><span>Hedef Kâr (%{channel.profit_margin}):</span> <span>Dahil</span></div>
                              <div className="flex justify-between text-red-500"><span>Komisyon (%{channel.commission_rate}):</span> <span>Dahil</span></div>
                           </div>
