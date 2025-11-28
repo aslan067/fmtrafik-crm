@@ -8,7 +8,7 @@ import {
   ArrowLeft, Save, Box, BarChart2, Globe, 
   RefreshCw, Calculator, Truck, Briefcase, 
   Tag, AlertCircle, TrendingUp, DollarSign, Percent,
-  Image as ImageIcon, Layers, FileText, Wand2
+  Image as ImageIcon, Layers, FileText, Wand2, Eye
 } from 'lucide-react'
 
 export default function ProductDetailPage() {
@@ -34,6 +34,7 @@ export default function ProductDetailPage() {
     unit: 'Adet',
     currency: 'TRY',
     is_active: true,
+    is_published: false, // <--- YENİ EKLENDİ
     supplier_id: '',
     product_group_id: '',
     tax_rate: 20,
@@ -42,20 +43,13 @@ export default function ProductDetailPage() {
     safety_stock: 5,
     market_data: {},
 
-    // --- Fiyatlandırma Alanları (UI State -> DB Mapping Gerekir) ---
-    // DB: supplier_list_price
+    // --- Fiyatlandırma Alanları ---
     supplier_price: 0,               // UI: Tedarikçi Fiyatı (Liste veya Net)
-    
-    // DB: supplier_discount_percentage
     supplier_discount_percentage: 0, // UI: İskonto
-    
-    // DB: price_multiplier
     price_multiplier: 1.8,           // UI: Çarpan
+    list_price: 0,                   // UI: Bayi Satış Fiyatı (dealer_list_price)
     
-    // DB: dealer_list_price (ÖNEMLİ DÜZELTME)
-    list_price: 0,                   // UI: Bayi Satış Fiyatı
-    
-    // --- Sadece UI İçin Hesaplanan (DB'ye gitmez) ---
+    // --- Sadece UI İçin Hesaplanan ---
     pricing_method: 'discount',      // 'net' | 'discount'
     net_cost: 0                      // Otomatik hesaplanan
   })
@@ -176,35 +170,27 @@ export default function ProductDetailPage() {
         const { data: prod, error } = await supabase.from('products').select('*').eq('id', params.id).single()
         if (error) throw error
         
-        // --- DB'den Gelen Veriyi UI State'e Eşle ---
-        // 1. Fiyatlandırma Yöntemini Tahmin Et
+        // Fiyatlandırma Yöntemini Tahmin Et
         let detectedMethod = 'discount'
         if (prod.supplier_discount_percentage === 0) {
-            // Eğer iskonto 0 ise ve bir fiyat varsa, muhtemelen NET çalışıyordur (veya iskonto girilmemiştir)
-            // Varsayılan discount tutuyoruz ama kullanıcı değiştirebilir.
             detectedMethod = 'discount' 
         }
 
         setProduct({
-          // Temel alanları spread et
           ...prod,
-          
-          // UI Alanlarını DB ile eşleştir
-          // Not: DB'de 'dealer_list_price' var, biz UI'da 'list_price' kullanıyoruz
+          // DB -> UI Eşleşmeleri
           list_price: prod.dealer_list_price || 0,
-          
-          // DB'de 'supplier_list_price' var, biz UI'da 'supplier_price' ile yönetiyoruz
           supplier_price: prod.supplier_list_price || 0,
-          
           pricing_method: detectedMethod,
+          is_active: prod.is_active,
+          is_published: prod.is_published || false, // <--- YENİ
           
-          // Null gelebilecekleri garantiye al
+          // Null check
           description: prod.description || '',
           image_url: prod.image_url || '',
           market_data: prod.market_data || {}
         })
 
-        // İstatistikleri Çek
         const { data: sales } = await supabase.from('sale_items').select('quantity, total_price, created_at').eq('product_id', params.id)
         if (sales && sales.length > 0) {
           const tSold = sales.reduce((a, c) => a + Number(c.quantity), 0)
@@ -229,10 +215,7 @@ export default function ProductDetailPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // --- CRITICAL: Veritabanına gidecek Payload'ı TEMİZLE ---
-      // UI state'inde (product) olup DB'de olmayan alanları (net_cost, pricing_method) gönderirsek hata alırız.
-      // Ayrıca UI isimlerini DB isimlerine (list_price -> dealer_list_price) çevirmeliyiz.
-      
+      // UI state'inde olup DB'de olmayanları çıkar
       const dbPayload = {
         name: product.name,
         product_code: product.product_code,
@@ -241,25 +224,23 @@ export default function ProductDetailPage() {
         unit: product.unit,
         currency: product.currency,
         is_active: product.is_active,
+        is_published: product.is_published, // <--- YENİ
         
-        // İlişkiler
-        supplier_id: product.supplier_id || null, // Boş string yerine null
+        supplier_id: product.supplier_id || null,
         product_group_id: product.product_group_id || null,
 
-        // Lojistik
         tax_rate: product.tax_rate,
         desi: product.desi,
         stock_quantity: product.stock_quantity,
         safety_stock: product.safety_stock,
         market_data: product.market_data,
 
-        // Fiyatlandırma (DB Sütun Adlarına Eşleme)
-        supplier_list_price: product.supplier_price,            // UI: supplier_price -> DB: supplier_list_price
+        // Fiyat Eşleşmeleri
+        supplier_list_price: product.supplier_price,
         supplier_discount_percentage: product.supplier_discount_percentage,
         price_multiplier: product.price_multiplier,
-        dealer_list_price: product.list_price,                  // UI: list_price -> DB: dealer_list_price
+        dealer_list_price: product.list_price,
         
-        // Meta
         company_id: profile.company_id,
         updated_at: new Date()
       }
@@ -273,8 +254,6 @@ export default function ProductDetailPage() {
       }
       
       alert('Ürün başarıyla kaydedildi.')
-      
-      // Kayıttan sonra sayfayı yenile ki yeni veriler gelsin (Router refresh)
       router.refresh()
       if (params.id === 'new') router.push('/products')
 
@@ -288,8 +267,6 @@ export default function ProductDetailPage() {
 
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€' }
   const symbol = currencySymbols[product.currency] || '₺'
-
-  // B2B Kar Marjı
   const b2bProfit = (product.list_price - product.net_cost)
   const b2bMargin = product.list_price > 0 ? (b2bProfit / product.list_price) * 100 : 0
 
@@ -384,13 +361,29 @@ export default function ProductDetailPage() {
                   </div>
                   <div><label className="label-text">Görsel Bağlantısı (URL)</label><input type="text" className="input-field text-xs" value={product.image_url || ''} onChange={(e) => setProduct({...product, image_url: e.target.value})}/></div>
                </div>
+
+               {/* YENİLENEN KISIM: DURUM & YAYINLAMA */}
                <div className="card space-y-4">
                   <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2"><Layers className="w-4 h-4"/> Tedarikçi & Durum</h3>
                   <div><label className="label-text">Ana Tedarikçi</label><select className="input-field" value={product.supplier_id} onChange={(e) => setProduct({...product, supplier_id: e.target.value})}>
                        <option value="">Seçiniz...</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                  
+                  {/* Aktiflik Toggle */}
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                      <span className="text-sm font-medium">Satış Durumu</span>
                      <div className="flex items-center gap-2"><span className={`text-xs font-bold ${product.is_active ? 'text-green-600' : 'text-gray-400'}`}>{product.is_active ? 'AKTİF' : 'PASİF'}</span><input type="checkbox" checked={product.is_active} onChange={(e) => setProduct({...product, is_active: e.target.checked})} className="toggle toggle-sm"/></div>
+                  </div>
+
+                  {/* Yayınlama Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                     <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-gray-500"/>
+                        <span className="text-sm font-medium">Katalogda Yayınla</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${product.is_published ? 'text-blue-600' : 'text-gray-400'}`}>{product.is_published ? 'YAYINDA' : 'GİZLİ'}</span>
+                        <input type="checkbox" checked={product.is_published} onChange={(e) => setProduct({...product, is_published: e.target.checked})} className="toggle toggle-sm toggle-info"/>
+                     </div>
                   </div>
                </div>
             </div>
@@ -448,7 +441,6 @@ export default function ProductDetailPage() {
                    <div><h3 className="font-bold text-green-900">2. Bayi Satış Fiyatı</h3><p className="text-xs text-green-700">Tekliflerde ve bayilerde kullanılacak baz fiyat.</p></div>
                 </div>
 
-                {/* HEDEF KÂR SİMÜLATÖRÜ */}
                 <div className="bg-white p-3 rounded-lg border border-dashed border-green-300">
                    <div className="flex justify-between items-center mb-2">
                      <label className="text-xs font-bold text-green-800 flex items-center gap-1"><Wand2 className="w-3 h-3"/> Hedef Kâr Marjı (%)</label>
