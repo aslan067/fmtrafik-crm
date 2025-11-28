@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentUser } from '@/lib/supabase'
 import DashboardLayout from '@/components/DashboardLayout'
+// DÜZELTME: 'Package' ikonu buraya eklendi
 import { 
   ArrowLeft, Save, Plus, Trash2, Search, 
-  ShoppingCart, Truck, AlertCircle 
+  ShoppingCart, Truck, AlertCircle, Package 
 } from 'lucide-react'
 
 export default function NewPurchaseOrderPage() {
@@ -19,7 +20,7 @@ export default function NewPurchaseOrderPage() {
   // Form State
   const [formData, setFormData] = useState({
     supplier_id: '',
-    order_number: '', // Otomatik üretilecek veya manuel
+    order_number: '',
     expected_delivery_date: '',
     currency: 'TRY',
     exchange_rate: 1.00,
@@ -59,7 +60,7 @@ export default function NewPurchaseOrderPage() {
 
       setProducts(productsData || [])
 
-      // 3. Sipariş Numarası Önerisi (Basit)
+      // 3. Sipariş Numarası Önerisi
       const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '')
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
       setFormData(prev => ({ ...prev, order_number: `PO-${dateStr}-${random}` }))
@@ -73,21 +74,19 @@ export default function NewPurchaseOrderPage() {
 
   // Ürün Ekleme Fonksiyonu
   const addItem = (product) => {
-    // Zaten ekli mi kontrol et
     const existing = items.find(i => i.product_id === product.id)
     if (existing) {
       alert('Bu ürün zaten listede var. Miktarını güncelleyebilirsiniz.')
       return
     }
 
-    // Yeni satır ekle
     setItems([...items, {
       product_id: product.id,
       product_name: product.name,
       product_code: product.product_code,
       quantity_ordered: 1,
-      unit_price: product.supplier_list_price || 0, // Ürün kartındaki tedarikçi fiyatını getir
-      tax_rate: 20, // Varsayılan KDV
+      unit_price: product.supplier_list_price || 0,
+      tax_rate: 20,
       total_price: product.supplier_list_price || 0
     }])
   }
@@ -99,7 +98,6 @@ export default function NewPurchaseOrderPage() {
     
     item[field] = parseFloat(value) || 0
 
-    // Toplamı güncelle
     if (field === 'quantity_ordered' || field === 'unit_price') {
       item.total_price = item.quantity_ordered * item.unit_price
     }
@@ -132,7 +130,7 @@ export default function NewPurchaseOrderPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // 1. Sipariş Başlığı (Header)
+      // 1. Sipariş Başlığı
       const { data: orderData, error: orderError } = await supabase
         .from('purchase_orders')
         .insert([{
@@ -146,7 +144,7 @@ export default function NewPurchaseOrderPage() {
           tax_amount: totals.taxAmount,
           total_amount: totals.total,
           notes: formData.notes,
-          status: 'ordered', // Doğrudan sipariş verildi statüsünde açıyoruz
+          status: 'ordered',
           created_by: user.id
         }])
         .select()
@@ -154,13 +152,13 @@ export default function NewPurchaseOrderPage() {
 
       if (orderError) throw orderError
 
-      // 2. Sipariş Kalemleri (Items)
+      // 2. Sipariş Kalemleri
       const orderItems = items.map(item => ({
         purchase_order_id: orderData.id,
         product_id: item.product_id,
-        description: item.product_name, // O anki ismi sakla
+        description: item.product_name,
         quantity_ordered: item.quantity_ordered,
-        quantity_received: 0, // Henüz gelmedi
+        quantity_received: 0,
         unit_price: item.unit_price,
         tax_rate: item.tax_rate,
         total_price: item.total_price
@@ -168,11 +166,6 @@ export default function NewPurchaseOrderPage() {
 
       const { error: itemsError } = await supabase.from('purchase_order_items').insert(orderItems)
       if (itemsError) throw itemsError
-
-      // --- STOK GÜNCELLEME (PLANLANAN GİRİŞ) ---
-      // Burası kritik: Sipariş verildiğinde "Gelecek Stok (Incoming Stock)" artmalı
-      // Bu işlemi daha sonra bir "Trigger" ile yapmak daha güvenli olur ama şimdilik manuel yapabiliriz
-      // Veya sadece Mal Kabul'de stok işlemi yaparız. Karmaşıklığı önlemek için stok artışını "Mal Kabul" ekranına bırakıyorum.
 
       alert('Sipariş başarıyla oluşturuldu!')
       router.push('/purchases')
@@ -185,7 +178,6 @@ export default function NewPurchaseOrderPage() {
     }
   }
 
-  // Tedarikçiye göre ürünleri filtrele (Opsiyonel: Eğer tedarikçi seçiliyse, sadece onun ürünlerini öne çıkar)
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.product_code?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -217,10 +209,9 @@ export default function NewPurchaseOrderPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
           
-          {/* SOL: Form ve Seçili Ürünler (8/12) */}
+          {/* SOL: Form ve Seçili Ürünler */}
           <div className="xl:col-span-8 space-y-6">
             
-            {/* Tedarikçi Bilgileri */}
             <div className="card grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label-text">Tedarikçi</label>
@@ -265,7 +256,6 @@ export default function NewPurchaseOrderPage() {
               </div>
             </div>
 
-            {/* Sipariş Listesi (Sepet) */}
             <div className="card min-h-[400px]">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5"/> Sipariş Kalemleri</h3>
               
@@ -324,7 +314,6 @@ export default function NewPurchaseOrderPage() {
                 </div>
               )}
 
-              {/* Toplamlar */}
               {items.length > 0 && (
                 <div className="flex justify-end mt-6 border-t pt-4">
                   <div className="w-64 space-y-2 text-sm">
@@ -349,7 +338,7 @@ export default function NewPurchaseOrderPage() {
 
           </div>
 
-          {/* SAĞ: Ürün Seçimi (4/12) */}
+          {/* SAĞ: Ürün Seçimi */}
           <div className="xl:col-span-4">
             <div className="card h-full flex flex-col max-h-[calc(100vh-100px)] sticky top-6">
               <div className="mb-4">
