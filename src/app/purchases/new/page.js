@@ -15,7 +15,7 @@ export default function NewPurchaseOrderPage() {
   const [saving, setSaving] = useState(false) // Kaydediliyor
   const [suppliers, setSuppliers] = useState([])
   
-  // Ürün Arama State'leri (Optimizasyon için)
+  // Ürün Arama State'leri
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -33,7 +33,7 @@ export default function NewPurchaseOrderPage() {
   // Sepet
   const [items, setItems] = useState([])
 
-  // --- SAYFA AÇILIŞI (Sadece Tedarikçileri Getir) ---
+  // --- SAYFA AÇILIŞI ---
   useEffect(() => {
     loadInitialData()
   }, [])
@@ -43,7 +43,7 @@ export default function NewPurchaseOrderPage() {
       const user = await getCurrentUser()
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-      // Sadece tedarikçileri çekiyoruz, ürünleri değil.
+      // Tedarikçileri çek
       const { data: suppliersData } = await supabase
         .from('suppliers')
         .select('id, name')
@@ -65,33 +65,28 @@ export default function NewPurchaseOrderPage() {
     }
   }
 
-  // --- AKILLI ÜRÜN ARAMA (Debounce & Limit) ---
+  // --- AKILLI ÜRÜN ARAMA (İSİM + KOD) ---
   useEffect(() => {
-    // 3 karakterden azsa arama yapma
     if (searchTerm.length < 2) {
       setSearchResults([])
       return
     }
 
-    // Kullanıcı yazmayı bitirene kadar bekle (300ms)
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true)
       try {
         const user = await getCurrentUser()
         const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
-        // Sadece gerekli alanları çek ve 20 adetle sınırla
+        // GÜNCELLEME BURADA: Hem İsimde Hem de Ürün Kodunda Ara (.or kullanımı)
         let query = supabase
           .from('products')
           .select('id, name, product_code, stock_quantity, unit, supplier_id, supplier_list_price, image_url')
           .eq('company_id', profile.company_id)
           .eq('is_active', true)
-          .ilike('name', `%${searchTerm}%`)
+          .or(`name.ilike.%${searchTerm}%,product_code.ilike.%${searchTerm}%`) // İsim VEYA Kod eşleşirse getir
           .limit(20)
 
-        // Eğer tedarikçi seçiliyse, öncelikle o tedarikçinin ürünlerini getir (Opsiyonel filtre)
-        // Burada katı filtre uygulamıyorum ki başka tedarikçi ürününü de görebilsin
-        
         const { data, error } = await query
 
         if (error) throw error
@@ -102,7 +97,7 @@ export default function NewPurchaseOrderPage() {
       } finally {
         setIsSearching(false)
       }
-    }, 400) // 400ms bekleme süresi
+    }, 400)
 
     return () => clearTimeout(delayDebounceFn)
   }, [searchTerm])
@@ -147,6 +142,11 @@ export default function NewPurchaseOrderPage() {
     acc.total = acc.subtotal + acc.taxAmount
     return acc
   }, { subtotal: 0, taxAmount: 0, total: 0 })
+
+  // Satır Silme
+  const removeItem = (index) => {
+    setItems(items.filter((_, i) => i !== index))
+  }
 
   // Kaydetme
   const handleSubmit = async () => {
@@ -309,9 +309,9 @@ export default function NewPurchaseOrderPage() {
                         <tr key={idx} className="group hover:bg-blue-50/30 transition-colors">
                           <td className="p-3 pl-4">
                             <div className="flex items-center gap-3">
-                              {/* Basit Resim Placeholder veya Gerçek Resim */}
-                              <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400">
-                                {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover rounded"/> : item.product_name.substring(0,1)}
+                              {/* Resim */}
+                              <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden">
+                                {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover"/> : item.product_name.substring(0,1)}
                               </div>
                               <div>
                                 <p className="font-medium text-gray-900">{item.product_name}</p>
@@ -408,7 +408,6 @@ export default function NewPurchaseOrderPage() {
                 ) : (
                   searchResults.map(product => {
                     const isAdded = items.some(i => i.product_id === product.id)
-                    // Seçili tedarikçi ile eşleşiyor mu?
                     const isMatch = formData.supplier_id && product.supplier_id === formData.supplier_id
                     
                     return (
