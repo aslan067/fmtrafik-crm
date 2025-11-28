@@ -14,6 +14,7 @@ export default function PurchaseDetailPage() {
   const params = useParams()
   
   const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState(null) // Hata mesajını göstermek için
   const [processing, setProcessing] = useState(false)
   
   const [order, setOrder] = useState(null)
@@ -22,7 +23,7 @@ export default function PurchaseDetailPage() {
   
   // Mal Kabul Modu
   const [receivingMode, setReceivingMode] = useState(false)
-  const [receiveQuantities, setReceiveQuantities] = useState({}) // { itemId: girilenMiktar }
+  const [receiveQuantities, setReceiveQuantities] = useState({}) 
 
   useEffect(() => {
     loadOrderData()
@@ -31,17 +32,23 @@ export default function PurchaseDetailPage() {
   async function loadOrderData() {
     try {
       setLoading(true)
+      setErrorMsg(null)
+
       const user = await getCurrentUser()
+      if (!user) return // Kullanıcı yoksa işlem yapma
+
       const { data: profile } = await supabase.from('user_profiles').select('company_id').eq('id', user.id).single()
 
       // 1. Şirket
       const { data: companyData } = await supabase.from('companies').select('*').eq('id', profile.company_id).single()
       setCompany(companyData)
 
-      // 2. Sipariş Başlığı
+      // 2. Sipariş Başlığı (DÜZELTME: user_profiles ilişkisi kaldırıldı)
+      // created_by alanı auth tablosuna bağlı olduğu için doğrudan user_profiles join'i hata verebiliyor.
+      // Şimdilik sadece tedarikçi bilgisini çekiyoruz.
       const { data: orderData, error: orderError } = await supabase
         .from('purchase_orders')
-        .select('*, suppliers(*), user_profiles(full_name)')
+        .select('*, suppliers(*)') 
         .eq('id', params.id)
         .single()
       
@@ -60,22 +67,23 @@ export default function PurchaseDetailPage() {
 
       // Receive Inputlarını sıfırla
       const initialQtys = {}
-      itemsData.forEach(item => {
-        // Varsayılan olarak (Sipariş - Gelen) kadarını öner
-        const remaining = item.quantity_ordered - (item.quantity_received || 0)
-        initialQtys[item.id] = remaining > 0 ? remaining : 0
-      })
+      if (itemsData) {
+        itemsData.forEach(item => {
+          const remaining = item.quantity_ordered - (item.quantity_received || 0)
+          initialQtys[item.id] = remaining > 0 ? remaining : 0
+        })
+      }
       setReceiveQuantities(initialQtys)
 
     } catch (error) {
-      console.error(error)
-      alert('Veri yüklenemedi')
+      console.error('Detay Yükleme Hatası:', error)
+      setErrorMsg(error.message) // Hatayı ekrana bas
     } finally {
       setLoading(false)
     }
   }
 
-  // --- MAL KABUL İŞLEMİ (KRİTİK BÖLÜM) ---
+  // --- MAL KABUL İŞLEMİ ---
   async function handleReceiveStock() {
     const toReceive = items.filter(item => receiveQuantities[item.id] > 0)
     
@@ -88,9 +96,6 @@ export default function PurchaseDetailPage() {
 
     setProcessing(true)
     try {
-      // Transaction olmadığı için Promise.all ile paralel işliyoruz
-      // Gerçek prodüksiyonda bu logic SQL Procedure (RPC) içinde olmalı
-      
       await Promise.all(toReceive.map(async (item) => {
         const qtyNow = parseFloat(receiveQuantities[item.id])
         const newTotalReceived = (item.quantity_received || 0) + qtyNow
@@ -101,14 +106,10 @@ export default function PurchaseDetailPage() {
           .update({ quantity_received: newTotalReceived })
           .eq('id', item.id)
 
-        // 2. ÜRÜN STOK GÜNCELLEME (STOK GİRİŞİ)
-        // Mevcut stok bilgisini alıp üzerine eklemiyoruz, RPC fonksiyonu daha güvenli olurdu ama
-        // şimdilik basitlik adına Supabase'in mevcut değerini çekip artıracağız.
-        // Daha güvenli yol: supabase rpc call
-        
+        // 2. ÜRÜN STOK GÜNCELLEME
         const { data: prod } = await supabase
           .from('products')
-          .select('stock_quantity, stock_incoming')
+          .select('stock_quantity')
           .eq('id', item.product_id)
           .single()
         
@@ -116,26 +117,21 @@ export default function PurchaseDetailPage() {
           await supabase
             .from('products')
             .update({
-              stock_quantity: (prod.stock_quantity || 0) + qtyNow,
-              // stock_incoming: (prod.stock_incoming || 0) - qtyNow // Incoming takibi henüz tam değilse opsiyonel
+              stock_quantity: (prod.stock_quantity || 0) + qtyNow
             })
             .eq('id', item.product_id)
         }
       }))
 
       // 3. Sipariş Durumunu Güncelle
-      // Hepsi geldi mi kontrol et
-      // (Bunu arayüzde basitçe yapalım, tam kontrol backendde olmalı)
-      // Şimdilik 'received' veya 'partial' yapalım
-      
       await supabase
         .from('purchase_orders')
-        .update({ status: 'received' }) // Basitleştirilmiş: Herhangi bir mal kabulde received yapıyoruz
+        .update({ status: 'received' })
         .eq('id', order.id)
 
       alert('Stok girişi başarıyla yapıldı!')
       setReceivingMode(false)
-      loadOrderData() // Sayfayı yenile
+      loadOrderData()
 
     } catch (error) {
       console.error(error)
@@ -149,6 +145,21 @@ export default function PurchaseDetailPage() {
   const symbol = order ? currencySymbols[order.currency] : '₺'
 
   if (loading) return <DashboardLayout><div className="flex h-screen justify-center items-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div></DashboardLayout>
+  
+  // Hata Ekranı
+  if (errorMsg) return (
+    <DashboardLayout>
+      <div className="flex flex-col h-[80vh] justify-center items-center text-center p-6">
+        <AlertTriangle className="w-12 h-12 text-red-500 mb-4"/>
+        <h2 className="text-xl font-bold text-gray-900">Veriler Yüklenemedi</h2>
+        <p className="text-gray-500 mt-2 bg-gray-100 p-4 rounded text-sm font-mono max-w-lg overflow-auto">
+          {errorMsg}
+        </p>
+        <button onClick={() => router.back()} className="mt-6 btn-secondary">Geri Dön</button>
+      </div>
+    </DashboardLayout>
+  )
+
   if (!order) return <div className="text-center py-20">Sipariş bulunamadı.</div>
 
   return (
@@ -301,10 +312,7 @@ export default function PurchaseDetailPage() {
                   <span className="text-gray-500">Beklenen Teslimat</span>
                   <span className="font-medium">{order.expected_delivery_date ? new Date(order.expected_delivery_date).toLocaleDateString('tr-TR') : '-'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Oluşturan</span>
-                  <span className="font-medium">{order.user_profiles?.full_name}</span>
-                </div>
+                {/* Yazar bilgisi geçici olarak kaldırıldı (ilişki sorunu nedeniyle) */}
                 <div className="border-t pt-3 mt-3">
                   <div className="flex justify-between text-gray-600 mb-1"><span>Ara Toplam</span><span>{symbol}{parseFloat(order.subtotal).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
                   <div className="flex justify-between text-gray-600 mb-1"><span>KDV</span><span>{symbol}{parseFloat(order.tax_amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</span></div>
