@@ -47,9 +47,9 @@ export default function DashboardLayout({ children }) {
     { name: 'Satışlar', href: '/sales', icon: ShoppingCart }, // YENİ
     { name: 'Satınalma', href: '/purchases', icon: Truck }, // YENİ
     { name: 'Ürünler & Stok', href: '/products', icon: Package },
+    { name: 'Ürün Grupları', href: '/product-groups', icon: Package },
     { name: 'Müşteriler', href: '/customers', icon: Users },
     { name: 'Tedarikçiler', href: '/suppliers', icon: Factory }, // YENİ
-    { name: 'Katalog Ayarları', href: '/settings/catalog', icon: ShoppingBag },
     { name: 'Ayarlar', href: '/settings', icon: Settings },
   ]
 
