@@ -63,7 +63,7 @@ export default function PurchaseDetailPage() {
       if (itemsError) throw itemsError
       setItems(itemsData || [])
 
-      // Receive Inputlarını sıfırla (Kalan miktarı öner)
+      // Receive Inputlarını sıfırla
       const initialQtys = {}
       if (itemsData) {
         itemsData.forEach(item => {
@@ -94,12 +94,9 @@ export default function PurchaseDetailPage() {
 
     setProcessing(true)
     try {
-      // 1. Stokları ve Kalemleri Güncelle
       let totalOrderedCount = 0
       let totalReceivedCount = 0
 
-      // Tüm kalemlerin son durumunu hesaplamak için döngü
-      // (Veritabanındaki son hali + şu an girilenler)
       for (const item of items) {
         const qtyNow = parseFloat(receiveQuantities[item.id] || 0)
         const currentReceived = parseFloat(item.quantity_received || 0)
@@ -131,15 +128,13 @@ export default function PurchaseDetailPage() {
         }
       }
 
-      // 2. Siparişin Yeni Durumunu Belirle (Otomatik)
       let newStatus = 'ordered'
       if (totalReceivedCount >= totalOrderedCount) {
-        newStatus = 'completed' // Hepsi geldi -> Tamamlandı
+        newStatus = 'completed'
       } else if (totalReceivedCount > 0) {
-        newStatus = 'partial' // Bir kısmı geldi -> Kısmi Teslimat
+        newStatus = 'partial'
       }
 
-      // 3. Sipariş Başlığını Güncelle
       await supabase
         .from('purchase_orders')
         .update({ status: newStatus })
@@ -163,14 +158,13 @@ export default function PurchaseDetailPage() {
   const currencySymbols = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }
   const symbol = order ? currencySymbols[order.currency] : '₺'
 
-  // Durum Etiketi Yardımcısı
   const getStatusBadge = (status) => {
     const configs = {
       draft: { color: 'bg-gray-100 text-gray-700', label: 'Taslak', icon: Clock },
       ordered: { color: 'bg-blue-100 text-blue-700', label: 'Sipariş Verildi', icon: Truck },
       partial: { color: 'bg-orange-100 text-orange-700', label: 'Kısmi Teslimat', icon: AlertTriangle },
       completed: { color: 'bg-green-100 text-green-700', label: 'Tamamlandı', icon: CheckCircle },
-      received: { color: 'bg-green-100 text-green-700', label: 'Tamamlandı', icon: CheckCircle }, // Eskiden kalma varsa
+      received: { color: 'bg-green-100 text-green-700', label: 'Tamamlandı', icon: CheckCircle },
       cancelled: { color: 'bg-red-100 text-red-700', label: 'İptal', icon: XCircle },
     }
     const config = configs[status] || configs.draft
@@ -190,7 +184,7 @@ export default function PurchaseDetailPage() {
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 pb-10 p-6 print:hidden">
         
-        {/* Üst Bar (Ekran Modu) */}
+        {/* Üst Bar */}
         <div className="max-w-6xl mx-auto mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <button onClick={() => router.back()} className="p-2 hover:bg-gray-200 rounded-full text-gray-500"><ArrowLeft className="w-6 h-6"/></button>
@@ -255,14 +249,20 @@ export default function PurchaseDetailPage() {
                     const receivedPercent = Math.min(100, ((item.quantity_received || 0) / item.quantity_ordered) * 100)
 
                     return (
-                      <tr key={item.id} className={isFullyReceived ? 'bg-gray-50/50' : ''}>
+                      <tr key={item.id} className={isFullyReceived ? 'bg-green-50/40' : 'hover:bg-gray-50'}>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden">
                                 {item.products?.image_url ? <img src={item.products.image_url} className="w-full h-full object-cover"/> : item.products?.product_code?.substring(0,2) || 'P'}
                             </div>
-                            <div>
-                              <p className={`font-medium ${isFullyReceived ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.description}</p>
+                            <div className="flex-1 min-w-0">
+                              {/* YENİ TASARIM: Çizgi yerine silikleştirme ve İkon */}
+                              <div className="flex items-center gap-2">
+                                <p className={`font-medium truncate ${isFullyReceived ? 'text-gray-500' : 'text-gray-900'}`}>
+                                  {item.description}
+                                </p>
+                                {isFullyReceived && <CheckCircle className="w-3.5 h-3.5 text-green-600" />}
+                              </div>
                               <p className="text-xs text-gray-500 font-mono">{item.products?.product_code}</p>
                             </div>
                           </div>
@@ -272,7 +272,11 @@ export default function PurchaseDetailPage() {
                           <div className="flex flex-col gap-1">
                             <div className="flex justify-between text-[10px] text-gray-500">
                               <span>{item.quantity_received || 0} Gelen</span>
-                              {remaining > 0 && <span className="text-red-500 font-bold">{remaining} Bekleyen</span>}
+                              {remaining > 0 ? (
+                                <span className="text-orange-600 font-bold">{remaining} Bekleyen</span>
+                              ) : (
+                                <span className="text-green-600 font-bold">Tamamlandı</span>
+                              )}
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                               <div className={`h-1.5 rounded-full ${isFullyReceived ? 'bg-green-500' : 'bg-orange-400'}`} style={{ width: `${receivedPercent}%` }}></div>
@@ -280,7 +284,6 @@ export default function PurchaseDetailPage() {
                           </div>
                         </td>
                         
-                        {/* MAL KABUL INPUTU */}
                         {receivingMode && (
                           <td className="px-4 py-3 text-center bg-blue-50/30">
                             {!isFullyReceived ? (
@@ -293,7 +296,9 @@ export default function PurchaseDetailPage() {
                                 max={remaining}
                               />
                             ) : (
-                              <CheckCircle className="w-5 h-5 text-green-500 mx-auto"/>
+                              <span className="text-xs font-bold text-green-600 flex items-center justify-center gap-1">
+                                <Check className="w-3 h-3"/> Tamam
+                              </span>
                             )}
                           </td>
                         )}
@@ -308,8 +313,7 @@ export default function PurchaseDetailPage() {
               </table>
             </div>
 
-             {/* Notlar */}
-             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                <h3 className="font-bold text-gray-800 mb-2 text-sm">Sipariş Notları</h3>
                <p className="text-sm text-gray-600 italic">{order.notes || 'Not yok.'}</p>
             </div>
@@ -345,7 +349,7 @@ export default function PurchaseDetailPage() {
         </div>
       </div>
 
-      {/* --- A4 YAZDIRMA ŞABLONU (Ekranda Gizli, Yazdırmada Görünür) --- */}
+      {/* --- A4 YAZDIRMA ŞABLONU --- */}
       <div id="print-area" className="hidden print:block bg-white text-black p-[10mm]">
         {/* Header */}
         <div className="flex justify-between items-start border-b-2 border-gray-800 pb-4 mb-8">
@@ -428,7 +432,6 @@ export default function PurchaseDetailPage() {
         </div>
       </div>
 
-      {/* Print CSS Fix */}
       <style jsx global>{`
         @media print {
           body * { visibility: hidden; }
